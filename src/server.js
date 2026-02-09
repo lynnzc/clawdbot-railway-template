@@ -165,6 +165,15 @@ async function startGateway() {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 
+  // Sync config tokens before every start so connectors always match the
+  // runtime token, even if the resolved token changed between restarts.
+  try {
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
+  } catch (err) {
+    console.error("[wrapper] failed to sync gateway tokens in config:", err);
+  }
+
   const args = [
     "gateway",
     "run",
