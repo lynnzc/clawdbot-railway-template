@@ -16,8 +16,8 @@ RUN apt-get update \
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
 
-# Enable corepack and set pnpm version to match openclaw requirements
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+# Install pnpm to match openclaw requirements (10.23.0)
+RUN npm install -g pnpm@10.23.0
 
 WORKDIR /openclaw
 
