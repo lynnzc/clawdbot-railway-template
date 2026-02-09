@@ -167,24 +167,20 @@ async function startGateway() {
 
   // Sync config tokens before every start so connectors always match the
   // runtime token, even if the resolved token changed between restarts.
+  // We rely on config rather than --token CLI arg to avoid internal mismatches.
   try {
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.mode", "token"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.auth.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
   } catch (err) {
-    console.error("[wrapper] failed to sync gateway tokens in config:", err);
+    console.error("[wrapper] failed to sync gateway config:", err);
   }
 
   const args = [
     "gateway",
     "run",
-    "--bind",
-    "loopback",
-    "--port",
-    String(INTERNAL_GATEWAY_PORT),
-    "--auth",
-    "token",
-    "--token",
-    OPENCLAW_GATEWAY_TOKEN,
   ];
 
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
