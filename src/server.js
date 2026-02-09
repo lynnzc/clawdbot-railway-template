@@ -123,26 +123,38 @@ function sleep(ms) {
 }
 
 async function waitForGatewayReady(opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const timeoutMs = opts.timeoutMs ?? 30_000; // Increased from 20s to 30s for slower systems
   const start = Date.now();
+  let lastError = null;
+
   while (Date.now() - start < timeoutMs) {
     try {
       // Try the default Control UI base path, then fall back to legacy or root.
-      const paths = ["/openclaw", "/clawdbot", "/"]; 
+      const paths = ["/openclaw", "/clawdbot", "/"];
       for (const p of paths) {
         try {
-          const res = await fetch(`${GATEWAY_TARGET}${p}`, { method: "GET" });
-          // Any HTTP response means the port is open.
-          if (res) return true;
-        } catch {
-          // try next
+          const res = await fetch(`${GATEWAY_TARGET}${p}`, {
+            method: "GET",
+            signal: AbortSignal.timeout(2000) // 2s timeout per request
+          });
+          // Any HTTP response means the port is open and responsive.
+          if (res) {
+            console.log(`[wrapper] Gateway ready at ${GATEWAY_TARGET}${p}`);
+            return true;
+          }
+        } catch (err) {
+          lastError = err;
+          // try next path
         }
       }
-    } catch {
-      // not ready
+    } catch (err) {
+      lastError = err;
+      // not ready yet
     }
-    await sleep(250);
+    await sleep(500); // Increased from 250ms to 500ms to reduce CPU usage
   }
+
+  console.error(`[wrapper] Gateway failed to become ready in ${timeoutMs}ms. Last error:`, lastError);
   return false;
 }
 
@@ -178,29 +190,47 @@ async function startGateway() {
   gatewayProc.on("error", (err) => {
     console.error(`[gateway] spawn error: ${String(err)}`);
     gatewayProc = null;
+    gatewayStarting = null;
   });
 
   gatewayProc.on("exit", (code, signal) => {
-    console.error(`[gateway] exited code=${code} signal=${signal}`);
+    const msg = `[gateway] exited code=${code} signal=${signal}`;
+    if (code === 0 || signal === "SIGTERM") {
+      console.log(msg + " (expected)");
+    } else {
+      console.error(msg + " (unexpected - may auto-restart on next request)");
+    }
     gatewayProc = null;
+    gatewayStarting = null;
   });
 }
 
 async function ensureGatewayRunning() {
-  if (!isConfigured()) return { ok: false, reason: "not configured" };
-  if (gatewayProc) return { ok: true };
+  if (!isConfigured()) {
+    console.log("[wrapper] Gateway cannot start: not configured");
+    return { ok: false, reason: "not configured" };
+  }
+  if (gatewayProc) {
+    console.log("[wrapper] Gateway already running (pid: " + gatewayProc.pid + ")");
+    return { ok: true };
+  }
   if (!gatewayStarting) {
+    console.log("[wrapper] Starting gateway...");
     gatewayStarting = (async () => {
       await startGateway();
-      const ready = await waitForGatewayReady({ timeoutMs: 20_000 });
+      const ready = await waitForGatewayReady({ timeoutMs: 30_000 });
       if (!ready) {
         throw new Error("Gateway did not become ready in time");
       }
-    })().finally(() => {
+    })().catch((err) => {
+      console.error("[wrapper] Failed to start gateway:", err);
+      throw err;
+    }).finally(() => {
       gatewayStarting = null;
     });
   }
   await gatewayStarting;
+  console.log("[wrapper] Gateway is now ready");
   return { ok: true };
 }
 
@@ -246,8 +276,24 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
-// Minimal health endpoint for Railway.
-app.get("/setup/healthz", (_req, res) => res.json({ ok: true }));
+// Health endpoint for Railway and monitoring.
+app.get("/setup/healthz", (_req, res) => {
+  const health = {
+    ok: true,
+    wrapper: {
+      uptime: process.uptime(),
+      pid: process.pid,
+      memory: process.memoryUsage(),
+      configured: isConfigured()
+    },
+    gateway: {
+      running: Boolean(gatewayProc),
+      pid: gatewayProc ? gatewayProc.pid : null,
+      target: GATEWAY_TARGET
+    }
+  };
+  res.json(health);
+});
 
 app.get("/setup/app.js", requireSetupAuth, (_req, res) => {
   // Serve JS for /setup (kept external to avoid inline encoding/template issues)
@@ -264,18 +310,184 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenClaw Setup</title>
   <style>
-    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 2rem; max-width: 900px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 1.25rem; margin: 1rem 0; }
-    label { display:block; margin-top: 0.75rem; font-weight: 600; }
-    input, select { width: 100%; padding: 0.6rem; margin-top: 0.25rem; }
-    button { padding: 0.8rem 1.2rem; border-radius: 10px; border: 0; background: #111; color: #fff; font-weight: 700; cursor: pointer; }
-    code { background: #f6f6f6; padding: 0.1rem 0.3rem; border-radius: 6px; }
-    .muted { color: #555; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      margin: 0;
+      padding: 2rem;
+      max-width: 900px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      margin-top: 0;
+      color: #1a202c;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle {
+      color: #718096;
+      margin-bottom: 2rem;
+      font-size: 1rem;
+    }
+    .card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      background: #fafafa;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .card h2 {
+      margin-top: 0;
+      color: #2d3748;
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .step-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: #667eea;
+      color: white;
+      border-radius: 50%;
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: 600;
+      color: #2d3748;
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      margin-top: 0.5rem;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border-color 0.2s ease;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    button {
+      padding: 0.875rem 1.5rem;
+      border-radius: 8px;
+      border: 0;
+      background: #667eea;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9375rem;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+    }
+    button:hover {
+      background: #5a67d8;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    code {
+      background: #edf2f7;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.875rem;
+    }
+    .muted {
+      color: #718096;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+    .status-badge.configured {
+      background: #c6f6d5;
+      color: #22543d;
+    }
+    .status-badge.not-configured {
+      background: #fed7d7;
+      color: #742a2a;
+    }
+    .links {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e2e8f0;
+    }
+    .links a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .links a:hover {
+      text-decoration: underline;
+    }
+    pre {
+      background: #1a202c;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+    .btn-secondary {
+      background: #4a5568;
+    }
+    .btn-secondary:hover {
+      background: #2d3748;
+    }
+    .btn-danger {
+      background: #e53e3e;
+    }
+    .btn-danger:hover {
+      background: #c53030;
+    }
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e2e8f0;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
-  <h1>OpenClaw Setup</h1>
-  <p class="muted">This wizard configures OpenClaw by running the same onboarding command it uses in the terminal, but from the browser.</p>
+  <div class="container">
+    <h1>OpenClaw Setup</h1>
+    <p class="subtitle">Configure your personal AI assistant in minutes</p>
 
   <div class="card">
     <h2>Status</h2>
@@ -329,8 +541,8 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   </div>
 
   <div class="card">
-    <h2>1) Model/auth provider</h2>
-    <p class="muted">Matches the groups shown in the terminal onboarding.</p>
+    <h2><span class="step-number">1</span> Model/Auth Provider</h2>
+    <p class="muted">Choose your AI model provider and authentication method.</p>
     <label>Provider group</label>
     <select id="authGroup"></select>
 
@@ -349,8 +561,8 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   </div>
 
   <div class="card">
-    <h2>2) Optional: Channels</h2>
-    <p class="muted">You can also add channels later inside OpenClaw, but this helps you get messaging working immediately.</p>
+    <h2><span class="step-number">2</span> Messaging Channels (Optional)</h2>
+    <p class="muted">Connect your messaging platforms now, or add them later from the OpenClaw dashboard.</p>
 
     <label>Telegram bot token (optional)</label>
     <input id="telegramToken" type="password" placeholder="123456:ABC..." />
@@ -373,14 +585,20 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   </div>
 
   <div class="card">
-    <h2>3) Run onboarding</h2>
-    <button id="run">Run setup</button>
-    <button id="pairingApprove" style="background:#1f2937; margin-left:0.5rem">Approve pairing</button>
-    <button id="reset" style="background:#444; margin-left:0.5rem">Reset setup</button>
-    <pre id="log" style="white-space:pre-wrap"></pre>
-    <p class="muted">Reset deletes the OpenClaw config file so you can rerun onboarding. Pairing approval lets you grant DM access when dmPolicy=pairing.</p>
+    <h2><span class="step-number">3</span> Run Onboarding</h2>
+    <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+      <button id="run">Start Setup</button>
+      <button id="pairingApprove" class="btn-secondary">Approve Pairing</button>
+      <button id="reset" class="btn-danger">Reset Setup</button>
+    </div>
+    <pre id="log" style="white-space:pre-wrap; margin-top: 1rem;"></pre>
+    <p class="muted" style="margin-top: 1rem;">
+      <strong>Tip:</strong> Reset deletes the config file to allow re-running setup.
+      Pairing approval grants DM access for Telegram/Discord when using pairing mode.
+    </p>
   </div>
 
+  </div> <!-- end container -->
   <script src="/setup/app.js"></script>
 </body>
 </html>`);
@@ -390,53 +608,53 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
   const version = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
   const channelsHelp = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
 
-  // We reuse OpenClaw's own auth-choice grouping logic indirectly by hardcoding the same group defs.
-  // This is intentionally minimal; later we can parse the CLI help output to stay perfectly in sync.
+  // Updated auth groups based on openclaw 2026.2.6+ (synced with latest onboard options).
+  // Ref: openclaw onboard --help and web search for 2026 updates
   const authGroups = [
-    { value: "openai", label: "OpenAI", hint: "Codex OAuth + API key", options: [
-      { value: "codex-cli", label: "OpenAI Codex OAuth (Codex CLI)" },
-      { value: "openai-codex", label: "OpenAI Codex (ChatGPT OAuth)" },
-      { value: "openai-api-key", label: "OpenAI API key" }
+    { value: "anthropic", label: "Anthropic (Recommended)", hint: "Claude - Most reliable", options: [
+      { value: "apiKey", label: "Anthropic API key" },
+      { value: "token", label: "Setup token (from console.anthropic.com)" },
+      { value: "setup-token", label: "Setup token (alternative)" }
     ]},
-    { value: "anthropic", label: "Anthropic", hint: "Claude Code CLI + API key", options: [
-      { value: "claude-cli", label: "Anthropic token (Claude Code CLI)" },
-      { value: "token", label: "Anthropic token (paste setup-token)" },
-      { value: "apiKey", label: "Anthropic API key" }
+    { value: "openai", label: "OpenAI", hint: "ChatGPT / GPT-4", options: [
+      { value: "openai-api-key", label: "OpenAI API key" },
+      { value: "openai-codex", label: "OpenAI Codex (ChatGPT OAuth)" }
     ]},
-    { value: "google", label: "Google", hint: "Gemini API key + OAuth", options: [
-      { value: "gemini-api-key", label: "Google Gemini API key" },
-      { value: "google-antigravity", label: "Google Antigravity OAuth" },
-      { value: "google-gemini-cli", label: "Google Gemini CLI OAuth" }
+    { value: "google", label: "Google", hint: "Gemini", options: [
+      { value: "gemini-api-key", label: "Google Gemini API key" }
     ]},
-    { value: "openrouter", label: "OpenRouter", hint: "API key", options: [
+    { value: "openrouter", label: "OpenRouter", hint: "Multi-model proxy", options: [
       { value: "openrouter-api-key", label: "OpenRouter API key" }
     ]},
-    { value: "ai-gateway", label: "Vercel AI Gateway", hint: "API key", options: [
+    { value: "ai-gateway", label: "Vercel AI Gateway", hint: "Multi-model proxy", options: [
       { value: "ai-gateway-api-key", label: "Vercel AI Gateway API key" }
     ]},
     { value: "moonshot", label: "Moonshot AI", hint: "Kimi K2 + Kimi Code", options: [
-      { value: "moonshot-api-key", label: "Moonshot AI API key" },
+      { value: "moonshot-api-key", label: "Moonshot AI API key (Global)" },
+      { value: "moonshot-api-key-cn", label: "Moonshot AI API key (China)" },
       { value: "kimi-code-api-key", label: "Kimi Code API key" }
     ]},
-    { value: "zai", label: "Z.AI (GLM 4.7)", hint: "API key", options: [
-      { value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" }
+    { value: "zai", label: "Z.AI", hint: "GLM models", options: [
+      { value: "zai-api-key", label: "Z.AI API key" }
     ]},
-    { value: "minimax", label: "MiniMax", hint: "M2.1 (recommended)", options: [
+    { value: "minimax", label: "MiniMax", hint: "Chinese AI models", options: [
       { value: "minimax-api", label: "MiniMax M2.1" },
       { value: "minimax-api-lightning", label: "MiniMax M2.1 Lightning" }
     ]},
-    { value: "qwen", label: "Qwen", hint: "OAuth", options: [
-      { value: "qwen-portal", label: "Qwen OAuth" }
-    ]},
-    { value: "copilot", label: "Copilot", hint: "GitHub + local proxy", options: [
-      { value: "github-copilot", label: "GitHub Copilot (GitHub device login)" },
-      { value: "copilot-proxy", label: "Copilot Proxy (local)" }
-    ]},
-    { value: "synthetic", label: "Synthetic", hint: "Anthropic-compatible (multi-model)", options: [
+    { value: "synthetic", label: "Synthetic", hint: "Anthropic-compatible proxy", options: [
       { value: "synthetic-api-key", label: "Synthetic API key" }
     ]},
-    { value: "opencode-zen", label: "OpenCode Zen", hint: "API key", options: [
-      { value: "opencode-zen", label: "OpenCode Zen (multi-model proxy)" }
+    { value: "venice", label: "Venice AI", hint: "Privacy-focused", options: [
+      { value: "venice-api-key", label: "Venice AI API key" }
+    ]},
+    { value: "opencode-zen", label: "OpenCode Zen", hint: "Multi-model proxy", options: [
+      { value: "opencode-zen", label: "OpenCode Zen API key" }
+    ]},
+    { value: "chutes", label: "Chutes", hint: "Browser extension method", options: [
+      { value: "chutes", label: "Chutes (browser automation)" }
+    ]},
+    { value: "skip", label: "Skip (Advanced)", hint: "Configure manually later", options: [
+      { value: "skip", label: "Skip authentication setup" }
     ]}
   ];
 
@@ -475,7 +693,7 @@ function buildOnboardArgs(payload) {
   if (payload.authChoice) {
     args.push("--auth-choice", payload.authChoice);
 
-    // Map secret to correct flag for common choices.
+    // Map secret to correct flag for common choices (updated for 2026.2.6+).
     const secret = (payload.authSecret || "").trim();
     const map = {
       "openai-api-key": "--openai-api-key",
@@ -483,12 +701,14 @@ function buildOnboardArgs(payload) {
       "openrouter-api-key": "--openrouter-api-key",
       "ai-gateway-api-key": "--ai-gateway-api-key",
       "moonshot-api-key": "--moonshot-api-key",
+      "moonshot-api-key-cn": "--moonshot-api-key",
       "kimi-code-api-key": "--kimi-code-api-key",
       "gemini-api-key": "--gemini-api-key",
       "zai-api-key": "--zai-api-key",
       "minimax-api": "--minimax-api-key",
       "minimax-api-lightning": "--minimax-api-key",
       "synthetic-api-key": "--synthetic-api-key",
+      "venice-api-key": "--venice-api-key",
       "opencode-zen": "--opencode-zen-api-key"
     };
     const flag = map[payload.authChoice];
@@ -496,8 +716,8 @@ function buildOnboardArgs(payload) {
       args.push(flag, secret);
     }
 
-    if (payload.authChoice === "token" && secret) {
-      // This is the Anthropics setup-token flow.
+    // Handle token-based auth (setup-token or token with provider)
+    if ((payload.authChoice === "token" || payload.authChoice === "setup-token") && secret) {
       args.push("--token-provider", "anthropic", "--token", secret);
     }
   }

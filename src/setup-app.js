@@ -26,7 +26,7 @@
   var importOutEl = document.getElementById('importOut');
 
   function setStatus(s) {
-    statusEl.textContent = s;
+    statusEl.innerHTML = s;
   }
 
   function renderAuth(groups) {
@@ -72,10 +72,13 @@
   }
 
   function refreshStatus() {
-    setStatus('Loading...');
+    setStatus('<span class="loading"></span> Loading status...');
     return httpJson('/setup/api/status').then(function (j) {
-      var ver = j.openclawVersion ? (' | ' + j.openclawVersion) : '';
-      setStatus((j.configured ? 'Configured - open /openclaw' : 'Not configured - run setup below') + ver);
+      var ver = j.openclawVersion ? (' | v' + j.openclawVersion) : '';
+      var badge = j.configured
+        ? '<span class="status-badge configured">Configured</span>'
+        : '<span class="status-badge not-configured">Not Configured</span>';
+      setStatus(badge + ver);
       renderAuth(j.authGroups || []);
       // If channels are unsupported, surface it for debugging.
       if (j.channelsAddHelp && j.channelsAddHelp.indexOf('telegram') === -1) {
@@ -93,6 +96,12 @@
   }
 
   document.getElementById('run').onclick = function () {
+    var runBtn = document.getElementById('run');
+    var originalText = runBtn.textContent;
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<span class="loading"></span> Running setup...';
+    runBtn.style.cursor = 'not-allowed';
+
     var payload = {
       flow: document.getElementById('flow').value,
       authChoice: authChoiceEl.value,
@@ -103,7 +112,7 @@
       slackAppToken: document.getElementById('slackAppToken').value
     };
 
-    logEl.textContent = 'Running...\n';
+    logEl.textContent = 'Starting onboarding process...\n\n';
 
     fetch('/setup/api/run', {
       method: 'POST',
@@ -116,9 +125,18 @@
       var j;
       try { j = JSON.parse(text); } catch (_e) { j = { ok: false, output: text }; }
       logEl.textContent += (j.output || JSON.stringify(j, null, 2));
+      if (j.ok) {
+        logEl.textContent += '\n[SUCCESS] Setup completed successfully!\n';
+      } else {
+        logEl.textContent += '\n[ERROR] Setup failed. Please check the output above.\n';
+      }
       return refreshStatus();
     }).catch(function (e) {
-      logEl.textContent += '\nError: ' + String(e) + '\n';
+      logEl.textContent += '\n[ERROR] ' + String(e) + '\n';
+    }).finally(function () {
+      runBtn.disabled = false;
+      runBtn.innerHTML = originalText;
+      runBtn.style.cursor = 'pointer';
     });
   };
 

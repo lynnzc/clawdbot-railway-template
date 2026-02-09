@@ -1,5 +1,5 @@
 # Build openclaw from source to avoid npm packaging gaps (some dist files are not shipped).
-FROM node:22-bookworm AS openclaw-build
+FROM node:22.12-bookworm AS openclaw-build
 
 # Dependencies needed for openclaw build
 RUN apt-get update \
@@ -16,7 +16,8 @@ RUN apt-get update \
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
 
-RUN corepack enable
+# Enable corepack and set pnpm version to match openclaw requirements
+RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
 
 WORKDIR /openclaw
 
@@ -39,7 +40,7 @@ RUN pnpm ui:install && pnpm ui:build
 
 
 # Runtime image
-FROM node:22-bookworm
+FROM node:22.12-bookworm
 ENV NODE_ENV=production
 
 RUN apt-get update \
