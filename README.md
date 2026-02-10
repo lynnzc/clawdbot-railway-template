@@ -1,6 +1,6 @@
 # OpenClaw Railway Template (1‑click deploy)
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/O_OJwz?referralCode=lNjnrx&utm_medium=integration&utm_source=template&utm_campaign=generic)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/openclaw-clawdbot-railway-template?referralCode=lNjnrx&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 This repo packages **[OpenClaw](https://github.com/openclaw/openclaw)** for Railway with a beautiful **/setup** web wizard so you can deploy your personal AI assistant **without touching the command line**.
 
