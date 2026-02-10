@@ -1237,23 +1237,34 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 
     // Model configuration (for OpenRouter / multi-model providers)
     if (payload.model?.trim()) {
-      const modelSet = await runCmd(
-        OPENCLAW_NODE,
-        clawArgs(["config", "set", "model", payload.model.trim()]),
-      );
-      extra += `\n[model config] exit=${modelSet.code}\n${modelSet.output || `Set model to: ${payload.model.trim()}`}`;
+      const m = payload.model.trim();
+      const r1 = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "largeModel", m]));
+      const r2 = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "smallModel", m]));
+      if (r1.code === 0) {
+        extra += `\n[model config] Set largeModel=${m}, smallModel=${m}`;
+      } else {
+        // Fallback: try primaryProvider.model
+        const r3 = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "primaryProvider.model", m]));
+        if (r3.code === 0) {
+          extra += `\n[model config] Set primaryProvider.model=${m}`;
+        } else {
+          extra += `\n[model config] Could not auto-set model. Set it manually in Config Editor: find the model key and change to "${m}"`;
+          extra += `\n  Tried: largeModel (exit=${r1.code}), smallModel (exit=${r2.code}), primaryProvider.model (exit=${r3.code})`;
+        }
+      }
     }
 
-    // Enable the web channel with open DM policy so /openclaw/chat works
-    // without pairing. The web UI is already authenticated via gateway token.
-    const webCfg = { enabled: true, dm: { policy: "open" } };
-    const webSet = await runCmd(
-      OPENCLAW_NODE,
-      clawArgs(["config", "set", "--json", "channels.web", JSON.stringify(webCfg)]),
-    );
-    const webEnable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "web"]));
-    extra += `\n[web config] exit=${webSet.code}\n${webSet.output || "(no output)"}`;
-    extra += `\n[web plugin] exit=${webEnable.code}\n${webEnable.output || "(no output)"}`;
+    // Enable the web channel if this build supports it.
+    if (supports("web")) {
+      const webCfg = { enabled: true, dm: { policy: "open" } };
+      const webSet = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "--json", "channels.web", JSON.stringify(webCfg)]),
+      );
+      const webEnable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "web"]));
+      extra += `\n[web config] exit=${webSet.code}\n${webSet.output || "(no output)"}`;
+      extra += `\n[web plugin] exit=${webEnable.code}\n${webEnable.output || "(no output)"}`;
+    }
 
     // Apply changes immediately.
     await restartGateway();
@@ -1261,7 +1272,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
 
   return res.status(ok ? 200 : 500).json({
     ok,
-    output: `${onboard.output}${extra}`,
+    output: redactSecrets(`${onboard.output}${extra}`),
   });
   } catch (err) {
     console.error("[/setup/api/run] error:", err);
@@ -1296,14 +1307,19 @@ app.get("/setup/api/debug", requireSetupAuth, async (_req, res) => {
 
 function redactSecrets(text) {
   if (!text) return text;
-  // Very small best-effort redaction. (Config paths/values may still contain secrets.)
   return String(text)
     .replace(/(sk-[A-Za-z0-9_-]{10,})/g, "[REDACTED]")
+    .replace(/(sk-or-[A-Za-z0-9_-]{10,})/g, "[REDACTED]")
     .replace(/(gho_[A-Za-z0-9_]{10,})/g, "[REDACTED]")
     .replace(/(xox[baprs]-[A-Za-z0-9-]{10,})/g, "[REDACTED]")
+    .replace(/(xapp-[A-Za-z0-9-]{10,})/g, "[REDACTED]")
     .replace(/(AA[A-Za-z0-9_-]{10,}:\S{10,})/g, "[REDACTED]")
     .replace(/(cli_[A-Za-z0-9]{10,})/g, "[REDACTED]")
-    .replace(/(EAAG[A-Za-z0-9]{10,})/g, "[REDACTED]");
+    .replace(/(EAAG[A-Za-z0-9]{10,})/g, "[REDACTED]")
+    // Discord bot tokens: base64UserId.timestamp.hmac
+    .replace(/([A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{20,})/g, "[REDACTED]")
+    // Telegram bot tokens: 123456:ABC-xxx
+    .replace(/(\d{8,}:[A-Za-z0-9_-]{20,})/g, "[REDACTED]");
 }
 
 const ALLOWED_CONSOLE_COMMANDS = new Set([
