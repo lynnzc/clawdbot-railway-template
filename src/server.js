@@ -833,22 +833,29 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
 
     <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
 
+    <label>Feishu / Lark domain</label>
+    <select id="feishuDomain" style="width: auto; min-width: 200px;">
+      <option value="feishu">Feishu (China)</option>
+      <option value="lark">Lark (Global)</option>
+    </select>
+
     <label>Feishu / Lark App ID (optional)</label>
     <input id="feishuAppId" placeholder="cli_xxxxxxxxxx" />
     <div class="muted" style="margin-top: 0.25rem">
       From <a href="https://open.feishu.cn/app" target="_blank">Feishu Open Platform</a> or
       <a href="https://open.larksuite.com/app" target="_blank">Lark Developer</a>:
-      create app &rarr; copy App ID and App Secret.
+      create app &rarr; Credentials &amp; Basic Info &rarr; copy App ID and App Secret.<br/>
+      Requires plugin <code>@openclaw/feishu</code> (auto-installed).
+      See <a href="https://docs.openclaw.ai/channels/feishu" target="_blank">full docs</a>.
     </div>
 
     <label>Feishu / Lark App Secret (optional)</label>
     <input id="feishuAppSecret" type="password" placeholder="App Secret" />
-
-    <label>Feishu / Lark Encrypt Key (optional)</label>
-    <input id="feishuEncryptKey" type="password" placeholder="Event encrypt key (if enabled)" />
-
-    <label>Feishu / Lark Verification Token (optional)</label>
-    <input id="feishuVerificationToken" type="password" placeholder="Event verification token" />
+    <div class="muted" style="margin-top: 0.25rem">
+      After setup: configure event subscription in Feishu Open Platform &rarr;
+      choose <strong>Use long connection to receive events</strong> (WebSocket) &rarr;
+      add event <code>im.message.receive_v1</code>.
+    </div>
 
     <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
 
@@ -1174,29 +1181,33 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       }
     }
 
-    // Feishu / Lark channel
-    if (payload.feishuAppId?.trim() || payload.feishuAppSecret?.trim()) {
-      if (!supports("feishu") && !supports("lark")) {
-        extra += "\n[feishu] skipped (this openclaw build does not list feishu/lark in `channels add --help`)\n";
-      } else {
-        const pluginName = supports("feishu") ? "feishu" : "lark";
-        const cfgObj = {
-          enabled: true,
-          appId: payload.feishuAppId?.trim() || undefined,
-          appSecret: payload.feishuAppSecret?.trim() || undefined,
-          encryptKey: payload.feishuEncryptKey?.trim() || undefined,
-          verificationToken: payload.feishuVerificationToken?.trim() || undefined,
-        };
-        const set = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "--json", `channels.${pluginName}`, JSON.stringify(cfgObj)]),
-        );
-        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", pluginName]));
-        const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", `channels.${pluginName}`]));
-        extra += `\n[${pluginName} config] exit=${set.code}\n${set.output || "(no output)"}`;
-        extra += `\n[${pluginName} plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
-        extra += `\n[${pluginName} verify] exit=${get.code}\n${get.output || "(no output)"}`;
-      }
+    // Feishu / Lark channel (requires plugin: @openclaw/feishu)
+    if (payload.feishuAppId?.trim() && payload.feishuAppSecret?.trim()) {
+      const install = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "install", "@openclaw/feishu"]));
+      extra += `\n[feishu install] exit=${install.code}\n${install.output || "(no output)"}`;
+
+      const isLark = payload.feishuDomain === "lark";
+      const cfgObj = {
+        enabled: true,
+        dmPolicy: "pairing",
+        ...(isLark ? { domain: "lark" } : {}),
+        accounts: {
+          main: {
+            appId: payload.feishuAppId.trim(),
+            appSecret: payload.feishuAppSecret.trim(),
+          },
+        },
+      };
+      const set = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "--json", "channels.feishu", JSON.stringify(cfgObj)]),
+      );
+      const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "feishu"]));
+      const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.feishu"]));
+      extra += `\n[feishu config] exit=${set.code}\n${set.output || "(no output)"}`;
+      extra += `\n[feishu plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
+      extra += `\n[feishu verify] exit=${get.code}\n${get.output || "(no output)"}`;
+      extra += `\n[feishu] Note: you still need to configure event subscription (WebSocket long connection + im.message.receive_v1) in the Feishu/Lark Open Platform.\n`;
     }
 
     // WeCom channel
