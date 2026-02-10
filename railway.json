@@ -7,6 +7,44 @@
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/setup/healthz",
-    "healthcheckTimeout": 300
+    "healthcheckTimeout": 300,
+    "volumeMounts": [
+      {
+        "mountPath": "/data",
+        "volumeName": "openclaw-data"
+      }
+    ]
+  },
+  "envVars": {
+    "SETUP_PASSWORD": {
+      "description": "Password to access the /setup wizard. Keep this secure.",
+      "required": true,
+      "generator": "secret"
+    },
+    "OPENCLAW_GATEWAY_TOKEN": {
+      "description": "Internal token for gateway authentication. Auto-generated.",
+      "required": false,
+      "generator": "secret"
+    },
+    "OPENCLAW_STATE_DIR": {
+      "description": "Directory for OpenClaw state and configuration.",
+      "default": "/data/.openclaw",
+      "required": false
+    },
+    "OPENCLAW_WORKSPACE_DIR": {
+      "description": "Directory for OpenClaw workspace files.",
+      "default": "/data/workspace",
+      "required": false
+    },
+    "PORT": {
+      "description": "Port the server listens on.",
+      "default": "8080",
+      "required": false
+    },
+    "OPENCLAW_PUBLIC_PORT": {
+      "description": "Port for external access.",
+      "default": "8080",
+      "required": false
+    }
   }
 }
