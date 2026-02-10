@@ -45,14 +45,16 @@ const PORT = Number.parseInt(
 );
 
 // State/workspace
-// OpenClaw defaults to ~/.openclaw.
+// On Railway, default to /data volume so config survives redeploys.
+// Falls back to ~/.openclaw for local/non-Railway environments.
+const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
 const STATE_DIR =
   getEnvWithShim("OPENCLAW_STATE_DIR", "CLAWDBOT_STATE_DIR") ||
-  path.join(os.homedir(), ".openclaw");
+  (isRailway ? "/data/.openclaw" : path.join(os.homedir(), ".openclaw"));
 
 const WORKSPACE_DIR =
   getEnvWithShim("OPENCLAW_WORKSPACE_DIR", "CLAWDBOT_WORKSPACE_DIR") ||
-  path.join(STATE_DIR, "workspace");
+  (isRailway ? "/data/workspace" : path.join(STATE_DIR, "workspace"));
 
 // Protect /setup with a user-provided password.
 const SETUP_PASSWORD = process.env.SETUP_PASSWORD?.trim();
