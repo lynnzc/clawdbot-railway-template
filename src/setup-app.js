@@ -561,28 +561,52 @@
 
   if (importRunEl) importRunEl.onclick = runImport;
 
-  // Pairing approve helper
-  var pairingBtn = document.getElementById('pairingApprove');
-  if (pairingBtn) {
-    pairingBtn.onclick = function () {
-      var channel = prompt('Enter channel (telegram or discord):');
-      if (!channel) return;
-      channel = channel.trim().toLowerCase();
-      if (channel !== 'telegram' && channel !== 'discord') {
-        alert('Channel must be "telegram" or "discord"');
+  // Pairing UI
+  var pairingChannelEl = document.getElementById('pairingChannel');
+  var pairingCodeEl = document.getElementById('pairingCode');
+  var pairingOutEl = document.getElementById('pairingOut');
+  var pairingListBtn = document.getElementById('pairingList');
+  var pairingApproveBtn = document.getElementById('pairingApprove');
+
+  if (pairingListBtn) {
+    pairingListBtn.onclick = function () {
+      var ch = pairingChannelEl ? pairingChannelEl.value : '';
+      if (!ch) return;
+      pairingOutEl.textContent = 'Loading...';
+      httpJson('/setup/api/console/run', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cmd: 'openclaw.pairing.list', arg: ch })
+      }).then(function (j) {
+        pairingOutEl.textContent = j.output || '(no pending requests)';
+      }).catch(function (e) {
+        pairingOutEl.textContent = 'Error: ' + String(e);
+      });
+    };
+  }
+
+  if (pairingApproveBtn) {
+    pairingApproveBtn.onclick = function () {
+      var ch = pairingChannelEl ? pairingChannelEl.value : '';
+      var code = pairingCodeEl ? pairingCodeEl.value.trim() : '';
+      if (!ch || !code) {
+        if (pairingOutEl) pairingOutEl.textContent = 'Please select a channel and enter a pairing code.';
         return;
       }
-      var code = prompt('Enter pairing code (e.g. 3EY4PUYS):');
-      if (!code) return;
-      logEl.textContent += '\nApproving pairing for ' + channel + '...\n';
+      pairingOutEl.textContent = 'Approving ' + ch + ' / ' + code + '...';
       fetch('/setup/api/pairing/approve', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ channel: channel, code: code.trim() })
+        body: JSON.stringify({ channel: ch, code: code })
       }).then(function (r) { return r.text(); })
-        .then(function (t) { logEl.textContent += t + '\n'; })
-        .catch(function (e) { logEl.textContent += 'Error: ' + String(e) + '\n'; });
+        .then(function (t) {
+          pairingOutEl.textContent = t;
+          if (pairingCodeEl) pairingCodeEl.value = '';
+        })
+        .catch(function (e) {
+          pairingOutEl.textContent = 'Error: ' + String(e);
+        });
     };
   }
 

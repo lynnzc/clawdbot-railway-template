@@ -689,7 +689,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <button data-cmd="openclaw.health">Health</button>
       <button data-cmd="openclaw.channels.status">Channels</button>
       <button data-cmd="openclaw.plugins.list">Plugins</button>
-      <button data-cmd="openclaw.pairing.list">Pairing</button>
+      <button data-cmd="openclaw.pairing.list" data-needs-arg="channel (discord, telegram, web, feishu)">Pairing</button>
       <button data-cmd="openclaw.logs" data-arg="200">Logs</button>
       <button data-cmd="openclaw.config.get" data-needs-arg="config path">Config Get</button>
       <button data-cmd="openclaw.config.set" data-needs-arg="path value">Config Set</button>
@@ -906,14 +906,29 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <h2><span class="step-number">3</span> Run Onboarding</h2>
     <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
       <button id="run">Start Setup</button>
-      <button id="pairingApprove" class="btn-secondary">Approve Pairing</button>
       <button id="reset" class="btn-danger">Reset Setup</button>
     </div>
     <pre id="log" style="white-space:pre-wrap; margin-top: 1rem;"></pre>
-    <p class="muted" style="margin-top: 1rem;">
-      <strong>Tip:</strong> Reset deletes the config file to allow re-running setup.
-      Pairing approval grants DM access for Telegram/Discord when using pairing mode.
-    </p>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-number">4</span> Pairing</h2>
+    <p class="muted">Approve DM access for channels that use pairing mode. Select a channel, check pending requests, then approve with the code.</p>
+    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.75rem;">
+      <select id="pairingChannel" style="width: auto; min-width: 140px;">
+        <option value="discord">Discord</option>
+        <option value="telegram">Telegram</option>
+        <option value="web">Web</option>
+        <option value="feishu">Feishu</option>
+        <option value="slack">Slack</option>
+      </select>
+      <button id="pairingList" class="btn-secondary">List Pending</button>
+    </div>
+    <pre id="pairingOut" style="white-space:pre-wrap; margin-top: 0.75rem; min-height: 2rem;"></pre>
+    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem;">
+      <input id="pairingCode" placeholder="Pairing code (e.g. 3EY4PUYS)" style="max-width: 260px;" />
+      <button id="pairingApprove" class="btn-secondary">Approve</button>
+    </div>
   </div>
 
   </div> <!-- end container -->
@@ -1441,7 +1456,7 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.channels.status") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "status", "--plain"]));
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "status"]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.channels.logs") {
@@ -1451,7 +1466,7 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
     }
     if (cmd === "openclaw.logs") {
       const limit = Math.max(50, Math.min(1000, Number.parseInt(arg || "200", 10) || 200));
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["logs", "--limit", String(limit), "--plain"]));
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["logs", "--limit", String(limit)]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.config.get") {
@@ -1496,7 +1511,8 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.pairing.list") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "list"]));
+      if (!arg) return res.status(400).json({ ok: false, error: "Usage: pairing.list <channel> (e.g. discord, telegram, web, feishu)" });
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "list", arg]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.pairing.approve") {
