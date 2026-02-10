@@ -477,6 +477,135 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     .btn-danger:hover {
       background: #c53030;
     }
+    .terminal-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+      margin-bottom: 1rem;
+    }
+    .terminal-actions button {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.8125rem;
+      border-radius: 999px;
+      background: #edf2f7;
+      color: #2d3748;
+      box-shadow: none;
+      font-weight: 500;
+    }
+    .terminal-actions button:hover {
+      background: #667eea;
+      color: #fff;
+      transform: none;
+      box-shadow: none;
+    }
+    .terminal-output {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      padding: 1rem;
+      border-radius: 8px 8px 0 0;
+      max-height: 400px;
+      overflow-y: auto;
+      min-height: 120px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .terminal-output .term-cmd {
+      color: #8b949e;
+    }
+    .terminal-output .term-ok {
+      color: #c9d1d9;
+    }
+    .terminal-output .term-err {
+      color: #f85149;
+    }
+    .terminal-input-row {
+      display: flex;
+      align-items: center;
+      background: #161b22;
+      border-radius: 0 0 8px 8px;
+      border-top: 1px solid #30363d;
+      padding: 0;
+    }
+    .terminal-prompt {
+      color: #58a6ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.875rem;
+      font-weight: 700;
+      padding: 0.625rem 0 0.625rem 0.75rem;
+      user-select: none;
+    }
+    .terminal-input-row input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #c9d1d9;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8125rem;
+      padding: 0.625rem 0.5rem;
+      margin: 0;
+      outline: none;
+    }
+    .terminal-input-row input::placeholder {
+      color: #484f58;
+    }
+    .terminal-input-row button {
+      border-radius: 6px;
+      margin: 0.375rem;
+      padding: 0.375rem 0.875rem;
+      font-size: 0.8125rem;
+      background: #238636;
+      box-shadow: none;
+    }
+    .terminal-input-row button:hover {
+      background: #2ea043;
+      transform: none;
+    }
+    .terminal-autocomplete {
+      position: relative;
+    }
+    .terminal-suggestions {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      right: 0;
+      background: #1c2128;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+      display: none;
+      z-index: 10;
+      margin-bottom: 2px;
+    }
+    .terminal-suggestions.visible {
+      display: block;
+    }
+    .terminal-suggestions div {
+      padding: 0.375rem 0.75rem;
+      cursor: pointer;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8125rem;
+      color: #c9d1d9;
+    }
+    .terminal-suggestions div:hover,
+    .terminal-suggestions div.active {
+      background: #30363d;
+    }
+    .terminal-clear-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 0.375rem;
+    }
+    .terminal-clear-row button {
+      padding: 0.25rem 0.625rem;
+      font-size: 0.75rem;
+      background: #4a5568;
+      box-shadow: none;
+      border-radius: 4px;
+    }
     .loading {
       display: inline-block;
       width: 16px;
@@ -500,7 +629,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <h2>Status</h2>
     <div id="status">Loading...</div>
     <div style="margin-top: 0.75rem">
-      <a href="/openclaw" target="_blank">Open OpenClaw UI</a>
+      <a id="openClawLink" href="/openclaw" target="_blank">Open OpenClaw UI</a>
       &nbsp;|&nbsp;
       <a href="/setup/export" target="_blank">Download backup (.tar.gz)</a>
     </div>
@@ -514,27 +643,38 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   </div>
 
   <div class="card">
-    <h2>Debug console</h2>
-    <p class="muted">Run a small allowlist of safe commands (no shell). Useful for debugging and recovery.</p>
+    <h2>Terminal</h2>
+    <p class="muted">Run OpenClaw CLI commands. Only allowlisted safe commands are permitted.</p>
 
-    <div style="display:flex; gap:0.5rem; align-items:center">
-      <select id="consoleCmd" style="flex: 1">
-        <option value="gateway.restart">gateway.restart (wrapper-managed)</option>
-        <option value="gateway.stop">gateway.stop (wrapper-managed)</option>
-        <option value="gateway.start">gateway.start (wrapper-managed)</option>
-        <option value="openclaw.status">openclaw status</option>
-        <option value="openclaw.health">openclaw health</option>
-        <option value="openclaw.doctor">openclaw doctor</option>
-        <option value="openclaw.channels.status">openclaw channels status</option>
-        <option value="openclaw.channels.logs">openclaw channels logs --channel &lt;name&gt;</option>
-        <option value="openclaw.logs">openclaw logs --limit N</option>
-        <option value="openclaw.config.get">openclaw config get &lt;path&gt;</option>
-        <option value="openclaw.version">openclaw --version</option>
-      </select>
-      <input id="consoleArg" placeholder="Optional arg (e.g. 200, gateway.port)" style="flex: 1" />
-      <button id="consoleRun" style="background:#0f172a">Run</button>
+    <div class="terminal-actions">
+      <button data-cmd="gateway.restart">Restart</button>
+      <button data-cmd="gateway.stop">Stop</button>
+      <button data-cmd="gateway.start">Start</button>
+      <button data-cmd="openclaw.health">Health</button>
+      <button data-cmd="openclaw.channels.status">Channels</button>
+      <button data-cmd="openclaw.plugins.list">Plugins</button>
+      <button data-cmd="openclaw.pairing.list">Pairing</button>
+      <button data-cmd="openclaw.logs" data-arg="200">Logs</button>
+      <button data-cmd="openclaw.config.get" data-needs-arg="config path">Config Get</button>
+      <button data-cmd="openclaw.config.set" data-needs-arg="path value">Config Set</button>
+      <button data-cmd="openclaw.plugins.enable" data-needs-arg="plugin name">Enable Plugin</button>
+      <button data-cmd="openclaw.plugins.disable" data-needs-arg="plugin name">Disable Plugin</button>
+      <button data-cmd="openclaw.doctor">Doctor</button>
+      <button data-cmd="openclaw.version">Version</button>
     </div>
-    <pre id="consoleOut" style="white-space:pre-wrap"></pre>
+
+    <div class="terminal-output" id="terminalOut"></div>
+    <div class="terminal-autocomplete">
+      <div class="terminal-suggestions" id="terminalSuggestions"></div>
+      <div class="terminal-input-row">
+        <span class="terminal-prompt">$</span>
+        <input id="terminalCmd" placeholder="Type command... (e.g. config.get channels)" autocomplete="off" />
+        <button id="terminalRun">Run</button>
+      </div>
+    </div>
+    <div class="terminal-clear-row">
+      <button id="terminalClear">Clear</button>
+    </div>
   </div>
 
   <div class="card">
@@ -671,6 +811,7 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
   res.json({
     configured: isConfigured(),
     gatewayTarget: GATEWAY_TARGET,
+    gatewayToken: OPENCLAW_GATEWAY_TOKEN,
     openclawVersion: version.output.trim(),
     channelsAddHelp: channelsHelp.output,
     authGroups,
@@ -872,6 +1013,17 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       }
     }
 
+    // Enable the web channel with open DM policy so /openclaw/chat works
+    // without pairing. The web UI is already authenticated via gateway token.
+    const webCfg = { enabled: true, dm: { policy: "open" } };
+    const webSet = await runCmd(
+      OPENCLAW_NODE,
+      clawArgs(["config", "set", "--json", "channels.web", JSON.stringify(webCfg)]),
+    );
+    const webEnable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "web"]));
+    extra += `\n[web config] exit=${webSet.code}\n${webSet.output || "(no output)"}`;
+    extra += `\n[web plugin] exit=${webEnable.code}\n${webEnable.output || "(no output)"}`;
+
     // Apply changes immediately.
     await restartGateway();
   }
@@ -927,15 +1079,25 @@ const ALLOWED_CONSOLE_COMMANDS = new Set([
   "gateway.stop",
   "gateway.start",
 
-  // OpenClaw CLI helpers
+  // OpenClaw CLI helpers (read-only)
   "openclaw.version",
   "openclaw.status",
   "openclaw.health",
   "openclaw.doctor",
   "openclaw.channels.status",
+  "openclaw.channels.list",
   "openclaw.channels.logs",
   "openclaw.logs",
   "openclaw.config.get",
+
+  // Write operations
+  "openclaw.config.set",
+  "openclaw.config.set.json",
+  "openclaw.plugins.list",
+  "openclaw.plugins.enable",
+  "openclaw.plugins.disable",
+  "openclaw.pairing.list",
+  "openclaw.pairing.approve",
 ]);
 
 app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
@@ -998,6 +1160,55 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
     if (cmd === "openclaw.config.get") {
       if (!arg) return res.status(400).json({ ok: false, error: "Missing config path" });
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", arg]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.config.set") {
+      // arg format: "<path> <value>" - split on first space
+      const spaceIdx = arg.indexOf(" ");
+      if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: config.set <path> <value>" });
+      const cfgPath = arg.slice(0, spaceIdx);
+      const cfgVal = arg.slice(spaceIdx + 1);
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", cfgPath, cfgVal]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Set ${cfgPath}\n` });
+    }
+    if (cmd === "openclaw.config.set.json") {
+      // arg format: "<path> <json>" - split on first space
+      const spaceIdx = arg.indexOf(" ");
+      if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: config.set.json <path> <json>" });
+      const cfgPath = arg.slice(0, spaceIdx);
+      const cfgVal = arg.slice(spaceIdx + 1);
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", cfgPath, cfgVal]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Set ${cfgPath} (JSON)\n` });
+    }
+    if (cmd === "openclaw.plugins.list") {
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "list"]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.plugins.enable") {
+      if (!arg) return res.status(400).json({ ok: false, error: "Usage: plugins.enable <name>" });
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", arg]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Enabled plugin: ${arg}\n` });
+    }
+    if (cmd === "openclaw.plugins.disable") {
+      if (!arg) return res.status(400).json({ ok: false, error: "Usage: plugins.disable <name>" });
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "disable", arg]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Disabled plugin: ${arg}\n` });
+    }
+    if (cmd === "openclaw.channels.list") {
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "list"]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.pairing.list") {
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "list"]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.pairing.approve") {
+      // arg format: "<channel> <code>"
+      const spaceIdx = arg.indexOf(" ");
+      if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: pairing.approve <channel> <code>" });
+      const channel = arg.slice(0, spaceIdx);
+      const code = arg.slice(spaceIdx + 1).trim();
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "approve", channel, code]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
 
