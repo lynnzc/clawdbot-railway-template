@@ -829,10 +829,8 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           groupPolicy: "open",
           dm: {
             enabled: true,
-            // "open" lets anyone DM the bot without pairing.
-            // Change to "pairing" for stricter access control.
-            policy: "open",
-            allowFrom: ["*"],
+            // "pairing" requires users to enter a pairing code before they can DM the bot.
+            policy: "pairing",
           },
         };
         const set = await runCmd(
