@@ -38,6 +38,10 @@ RUN pnpm build
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:install && pnpm ui:build
 
+# Pre-install extension dependencies so plugins work at runtime
+# (the runtime image has no build tools / package managers).
+RUN cd /openclaw/extensions/feishu && pnpm install --no-frozen-lockfile --prod 2>/dev/null || true
+
 
 # Runtime image
 FROM node:22.12-bookworm

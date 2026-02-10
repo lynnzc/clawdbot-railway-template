@@ -1082,7 +1082,9 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     const channelsHelp = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
     const helpText = channelsHelp.output || "";
 
-    const supports = (name) => helpText.includes(name);
+    // Match channel names as whole words to avoid false positives
+    // (e.g. "web" matching "webhook" in help text).
+    const supports = (name) => new RegExp(`\\b${name}\\b`, "i").test(helpText);
 
     if (payload.telegramToken?.trim()) {
       if (!supports("telegram")) {
@@ -1181,11 +1183,8 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       }
     }
 
-    // Feishu / Lark channel (requires plugin: @openclaw/feishu)
+    // Feishu / Lark channel (plugin pre-installed in Docker image at /openclaw/extensions/feishu)
     if (payload.feishuAppId?.trim() && payload.feishuAppSecret?.trim()) {
-      const install = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "install", "@openclaw/feishu"]));
-      extra += `\n[feishu install] exit=${install.code}\n${install.output || "(no output)"}`;
-
       const isLark = payload.feishuDomain === "lark";
       const cfgObj = {
         enabled: true,
@@ -1236,21 +1235,29 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     }
 
     // Model configuration (for OpenRouter / multi-model providers)
+    // Try known config paths in order; first success wins.
     if (payload.model?.trim()) {
       const m = payload.model.trim();
-      const r1 = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "largeModel", m]));
-      const r2 = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "smallModel", m]));
-      if (r1.code === 0) {
-        extra += `\n[model config] Set largeModel=${m}, smallModel=${m}`;
-      } else {
-        // Fallback: try primaryProvider.model
-        const r3 = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "primaryProvider.model", m]));
-        if (r3.code === 0) {
-          extra += `\n[model config] Set primaryProvider.model=${m}`;
-        } else {
-          extra += `\n[model config] Could not auto-set model. Set it manually in Config Editor: find the model key and change to "${m}"`;
-          extra += `\n  Tried: largeModel (exit=${r1.code}), smallModel (exit=${r2.code}), primaryProvider.model (exit=${r3.code})`;
+      const modelPaths = [
+        "primaryProvider.largeModel",
+        "primaryProvider.smallModel",
+        "largeModel",
+        "smallModel",
+        "primaryProvider.model",
+        "provider.largeModel",
+        "provider.smallModel",
+      ];
+      let modelSet = false;
+      for (const p of modelPaths) {
+        const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", p, m]));
+        if (r.code === 0) {
+          extra += `\n[model config] Set ${p}=${m}`;
+          modelSet = true;
         }
+      }
+      if (!modelSet) {
+        extra += `\n[model config] Could not auto-detect model config path. Set it manually in Config Editor.`;
+        extra += `\n  Open the config, find model-related keys, and change them to: ${m}`;
       }
     }
 
@@ -1319,7 +1326,10 @@ function redactSecrets(text) {
     // Discord bot tokens: base64UserId.timestamp.hmac
     .replace(/([A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{20,})/g, "[REDACTED]")
     // Telegram bot tokens: 123456:ABC-xxx
-    .replace(/(\d{8,}:[A-Za-z0-9_-]{20,})/g, "[REDACTED]");
+    .replace(/(\d{8,}:[A-Za-z0-9_-]{20,})/g, "[REDACTED]")
+    // JSON "appSecret"/"secret"/"token" values
+    .replace(/"(appSecret|secret|app_secret|token|botToken|accessToken|encodingAESKey)"\s*:\s*"([^"]{8,})"/gi,
+      (_, key) => `"${key}": "[REDACTED]"`);
 }
 
 const ALLOWED_CONSOLE_COMMANDS = new Set([
