@@ -523,7 +523,9 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
         <option value="openclaw.status">openclaw status</option>
         <option value="openclaw.health">openclaw health</option>
         <option value="openclaw.doctor">openclaw doctor</option>
-        <option value="openclaw.logs.tail">openclaw logs --tail N</option>
+        <option value="openclaw.channels.status">openclaw channels status</option>
+        <option value="openclaw.channels.logs">openclaw channels logs --channel &lt;name&gt;</option>
+        <option value="openclaw.logs">openclaw logs --limit N</option>
         <option value="openclaw.config.get">openclaw config get &lt;path&gt;</option>
         <option value="openclaw.version">openclaw --version</option>
       </select>
@@ -579,7 +581,8 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <input id="discordToken" type="password" placeholder="Bot token" />
     <div class="muted" style="margin-top: 0.25rem">
       Get it from the Discord Developer Portal: create an application, add a Bot, then copy the Bot Token.<br/>
-      <strong>Important:</strong> Enable <strong>MESSAGE CONTENT INTENT</strong> in Bot → Privileged Gateway Intents, or the bot will crash on startup.
+      <strong>Important:</strong> Enable <strong>MESSAGE CONTENT INTENT</strong> in Bot &rarr; Privileged Gateway Intents, or the bot cannot read messages.<br/>
+      The bot will respond to DMs and messages in any server it is invited to.
     </div>
 
     <label>Slack bot token (optional)</label>
@@ -818,9 +821,14 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         const cfgObj = {
           enabled: true,
           token,
-          groupPolicy: "allowlist",
+          // "open" allows the bot to respond in any server it's invited to.
+          // Users can tighten this to "allowlist" later and configure specific guilds.
+          groupPolicy: "open",
           dm: {
-            policy: "pairing",
+            enabled: true,
+            // "open" lets anyone DM the bot without pairing.
+            // Change to "pairing" for stricter access control.
+            policy: "open",
           },
         };
         const set = await runCmd(
@@ -912,7 +920,9 @@ const ALLOWED_CONSOLE_COMMANDS = new Set([
   "openclaw.status",
   "openclaw.health",
   "openclaw.doctor",
-  "openclaw.logs.tail",
+  "openclaw.channels.status",
+  "openclaw.channels.logs",
+  "openclaw.logs",
   "openclaw.config.get",
 ]);
 
@@ -959,9 +969,18 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
       const r = await runCmd(OPENCLAW_NODE, clawArgs(["doctor"]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
-    if (cmd === "openclaw.logs.tail") {
-      const lines = Math.max(50, Math.min(1000, Number.parseInt(arg || "200", 10) || 200));
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["logs", "--tail", String(lines)]));
+    if (cmd === "openclaw.channels.status") {
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "status", "--plain"]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.channels.logs") {
+      const channel = arg || "all";
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "logs", "--channel", channel, "--lines", "300"]));
+      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+    }
+    if (cmd === "openclaw.logs") {
+      const limit = Math.max(50, Math.min(1000, Number.parseInt(arg || "200", 10) || 200));
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["logs", "--limit", String(limit), "--plain"]));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
     if (cmd === "openclaw.config.get") {
