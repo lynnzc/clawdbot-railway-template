@@ -807,8 +807,11 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           OPENCLAW_NODE,
           clawArgs(["config", "set", "--json", "channels.telegram", JSON.stringify(cfgObj)]),
         );
+        // Enable the plugin in the plugin system (separate from channels.telegram.enabled).
+        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "telegram"]));
         const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.telegram"]));
         extra += `\n[telegram config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
+        extra += `\n[telegram plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
         extra += `\n[telegram verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
       }
     }
@@ -836,8 +839,13 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           OPENCLAW_NODE,
           clawArgs(["config", "set", "--json", "channels.discord", JSON.stringify(cfgObj)]),
         );
+        // Enable the plugin in the plugin system (separate from channels.discord.enabled).
+        // Without this, the gateway logs "Discord configured, not enabled yet" and the
+        // Discord monitor never starts.
+        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "discord"]));
         const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.discord"]));
         extra += `\n[discord config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
+        extra += `\n[discord plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
         extra += `\n[discord verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
       }
     }
@@ -855,8 +863,11 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           OPENCLAW_NODE,
           clawArgs(["config", "set", "--json", "channels.slack", JSON.stringify(cfgObj)]),
         );
+        // Enable the plugin in the plugin system.
+        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "slack"]));
         const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.slack"]));
         extra += `\n[slack config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
+        extra += `\n[slack plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
         extra += `\n[slack verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
       }
     }
