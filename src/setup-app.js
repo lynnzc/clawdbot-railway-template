@@ -94,6 +94,12 @@
         opt2.textContent = o.label + (o.hint ? ' - ' + o.hint : '');
         authChoiceEl.appendChild(opt2);
       }
+
+      var modelSection = document.getElementById('modelConfigSection');
+      if (modelSection) {
+        var showModel = ['openrouter', 'ai-gateway', 'opencode-zen'].indexOf(authGroupEl.value) !== -1;
+        modelSection.style.display = showModel ? 'block' : 'none';
+      }
     };
 
     authGroupEl.onchange();
@@ -380,6 +386,15 @@
         if (link) link.href = '/openclaw?token=' + encodeURIComponent(j.gatewayToken);
       }
 
+      var domainBanner = document.getElementById('domainBanner');
+      if (domainBanner) {
+        if (j.isRailway && !j.publicDomain) {
+          domainBanner.style.display = 'block';
+        } else {
+          domainBanner.style.display = 'none';
+        }
+      }
+
       if (configReloadEl && configTextEl) {
         loadConfigRaw();
       }
@@ -396,14 +411,34 @@
     runBtn.innerHTML = '<span class="loading"></span> Running setup...';
     runBtn.style.cursor = 'not-allowed';
 
+    var modelVal = '';
+    var modelCustomEl = document.getElementById('modelCustom');
+    var modelSelectEl = document.getElementById('modelSelect');
+    if (modelCustomEl && modelCustomEl.value.trim()) {
+      modelVal = modelCustomEl.value.trim();
+    } else if (modelSelectEl && modelSelectEl.value) {
+      modelVal = modelSelectEl.value;
+    }
+
     var payload = {
       flow: document.getElementById('flow').value,
       authChoice: authChoiceEl.value,
       authSecret: document.getElementById('authSecret').value,
+      model: modelVal,
       telegramToken: document.getElementById('telegramToken').value,
       discordToken: document.getElementById('discordToken').value,
       slackBotToken: document.getElementById('slackBotToken').value,
-      slackAppToken: document.getElementById('slackAppToken').value
+      slackAppToken: document.getElementById('slackAppToken').value,
+      whatsappEnabled: !!(document.getElementById('whatsappEnabled') && document.getElementById('whatsappEnabled').checked),
+      feishuAppId: (document.getElementById('feishuAppId') || {}).value || '',
+      feishuAppSecret: (document.getElementById('feishuAppSecret') || {}).value || '',
+      feishuEncryptKey: (document.getElementById('feishuEncryptKey') || {}).value || '',
+      feishuVerificationToken: (document.getElementById('feishuVerificationToken') || {}).value || '',
+      wecomCorpId: (document.getElementById('wecomCorpId') || {}).value || '',
+      wecomAgentId: (document.getElementById('wecomAgentId') || {}).value || '',
+      wecomToken: (document.getElementById('wecomToken') || {}).value || '',
+      wecomEncodingAESKey: (document.getElementById('wecomEncodingAESKey') || {}).value || '',
+      wecomSecret: (document.getElementById('wecomSecret') || {}).value || ''
     };
 
     logEl.textContent = 'Starting onboarding process...\n\n';

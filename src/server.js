@@ -345,14 +345,14 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       margin: 0;
       padding: 2rem;
       max-width: 900px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #1a1a2e;
       min-height: 100vh;
     }
     .container {
       background: white;
       border-radius: 16px;
       padding: 2rem;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     }
     h1 {
       margin-top: 0;
@@ -390,7 +390,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       justify-content: center;
       width: 28px;
       height: 28px;
-      background: #667eea;
+      background: #0f766e;
       color: white;
       border-radius: 50%;
       font-size: 0.875rem;
@@ -416,24 +416,24 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     }
     input:focus, select:focus {
       outline: none;
-      border-color: #667eea;
+      border-color: #0d9488;
     }
     button {
       padding: 0.875rem 1.5rem;
       border-radius: 8px;
       border: 0;
-      background: #667eea;
+      background: #0f766e;
       color: #fff;
       font-weight: 600;
       cursor: pointer;
       font-size: 0.9375rem;
       transition: all 0.2s ease;
-      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+      box-shadow: 0 2px 4px rgba(15, 118, 110, 0.3);
     }
     button:hover {
-      background: #5a67d8;
+      background: #0d9488;
       transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+      box-shadow: 0 4px 8px rgba(13, 148, 136, 0.4);
     }
     button:active {
       transform: translateY(0);
@@ -471,7 +471,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       border-top: 1px solid #e2e8f0;
     }
     .links a {
-      color: #667eea;
+      color: #0d9488;
       text-decoration: none;
       font-weight: 500;
     }
@@ -515,7 +515,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       font-weight: 500;
     }
     .terminal-actions button:hover {
-      background: #667eea;
+      background: #0f766e;
       color: #fff;
       transform: none;
       box-shadow: none;
@@ -633,7 +633,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       width: 16px;
       height: 16px;
       border: 2px solid #e2e8f0;
-      border-top-color: #667eea;
+      border-top-color: #0d9488;
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
     }
@@ -646,6 +646,16 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   <div class="container">
     <h1>OpenClaw Setup</h1>
     <p class="subtitle">Configure your personal AI assistant in minutes</p>
+
+  <div id="domainBanner" style="display:none; background:#fffbeb; border:1px solid #f59e0b; border-radius:12px; padding:1rem 1.5rem; margin-bottom:1.5rem;">
+    <strong style="color:#92400e;">No public domain detected</strong>
+    <p style="color:#78350f; margin:0.5rem 0 0; font-size:0.875rem; line-height:1.6;">
+      Your Railway service needs a public domain to be accessible from the internet.<br/>
+      Go to Railway Dashboard &rarr; your service &rarr; <strong>Settings</strong> &rarr; <strong>Networking</strong> &rarr;
+      <strong>Public Networking</strong> &rarr; click <strong>Generate Domain</strong>.<br/>
+      After adding the domain, refresh this page.
+    </p>
+  </div>
 
   <div class="card">
     <h2>Status</h2>
@@ -729,6 +739,59 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <option value="advanced">advanced</option>
       <option value="manual">manual</option>
     </select>
+
+    <div id="modelConfigSection" style="display:none; margin-top: 1.5rem; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; background: #f7fafc;">
+      <label style="margin-top:0">Model (optional)</label>
+      <select id="modelSelect">
+        <option value="">Auto (provider default)</option>
+        <optgroup label="Anthropic Claude">
+          <option value="anthropic/claude-opus-4.6">Claude Opus 4.6</option>
+          <option value="anthropic/claude-sonnet-4.5">Claude Sonnet 4.5</option>
+          <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5</option>
+        </optgroup>
+        <optgroup label="OpenAI">
+          <option value="openai/gpt-5.2-codex">GPT-5.2 Codex (400K ctx, Coding)</option>
+          <option value="openai/gpt-5.2">GPT-5.2</option>
+          <option value="openai/gpt-5-mini">GPT-5 Mini</option>
+          <option value="openai/gpt-5-nano">GPT-5 Nano (Budget)</option>
+          <option value="openai/o4-mini">o4-mini (Reasoning)</option>
+        </optgroup>
+        <optgroup label="Google Gemini">
+          <option value="google/gemini-3-pro-preview">Gemini 3 Pro Preview</option>
+          <option value="google/gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+        </optgroup>
+        <optgroup label="DeepSeek">
+          <option value="deepseek/deepseek-v3.2">DeepSeek V3.2</option>
+          <option value="deepseek/deepseek-r1">DeepSeek R1</option>
+        </optgroup>
+        <optgroup label="Qwen">
+          <option value="qwen/qwen3-max-thinking">Qwen3 Max Thinking (262K ctx)</option>
+          <option value="qwen/qwen3-coder-next">Qwen3 Coder Next (80B MoE, Coding)</option>
+        </optgroup>
+        <optgroup label="Moonshot">
+          <option value="moonshotai/kimi-k2.5">Kimi K2.5</option>
+        </optgroup>
+        <optgroup label="ByteDance">
+          <option value="bytedance-seed/seed-1.6">Seed 1.6 (256K ctx)</option>
+          <option value="bytedance-seed/seed-1.6-flash">Seed 1.6 Flash (Fast)</option>
+        </optgroup>
+        <optgroup label="Other">
+          <option value="minimax/minimax-m2.1">MiniMax M2.1</option>
+          <option value="z-ai/glm-4.7-flash">GLM 4.7 Flash</option>
+        </optgroup>
+        <optgroup label="Free Models">
+          <option value="openrouter/free">Free Router (Auto-select)</option>
+          <option value="stepfun/step-3.5-flash:free">Step 3.5 Flash (196B MoE)</option>
+          <option value="arcee-ai/trinity-large-preview:free">Trinity Large (400B MoE)</option>
+        </optgroup>
+      </select>
+      <input id="modelCustom" placeholder="Or type custom model ID: provider/model-name" style="margin-top: 0.5rem" />
+      <div class="muted" style="margin-top: 0.5rem">
+        OpenRouter provides 400+ models via one API key. Browse all at
+        <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a>.<br/>
+        Format: <code>provider/model-name</code>. Custom input overrides dropdown. Leave blank for provider default.
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -754,6 +817,59 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
 
     <label>Slack app token (optional)</label>
     <input id="slackAppToken" type="password" placeholder="xapp-..." />
+
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
+
+    <label style="display: inline-flex; align-items: center; gap: 0.5rem; text-transform: none; font-size: 1rem;">
+      <input id="whatsappEnabled" type="checkbox" style="width: auto; margin: 0;" />
+      Enable WhatsApp (QR link pairing)
+    </label>
+    <div class="muted" style="margin-top: 0.25rem">
+      WhatsApp uses QR code pairing via Linked Devices. After setup completes, run
+      <code>openclaw.channels.logs whatsapp</code> in the Terminal above to see the QR code,
+      then scan it with WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device.<br/>
+      Credentials are stored under <code>/data/.openclaw/credentials/whatsapp/</code> for future runs.
+    </div>
+
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
+
+    <label>Feishu / Lark App ID (optional)</label>
+    <input id="feishuAppId" placeholder="cli_xxxxxxxxxx" />
+    <div class="muted" style="margin-top: 0.25rem">
+      From <a href="https://open.feishu.cn/app" target="_blank">Feishu Open Platform</a> or
+      <a href="https://open.larksuite.com/app" target="_blank">Lark Developer</a>:
+      create app &rarr; copy App ID and App Secret.
+    </div>
+
+    <label>Feishu / Lark App Secret (optional)</label>
+    <input id="feishuAppSecret" type="password" placeholder="App Secret" />
+
+    <label>Feishu / Lark Encrypt Key (optional)</label>
+    <input id="feishuEncryptKey" type="password" placeholder="Event encrypt key (if enabled)" />
+
+    <label>Feishu / Lark Verification Token (optional)</label>
+    <input id="feishuVerificationToken" type="password" placeholder="Event verification token" />
+
+    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
+
+    <label>WeCom Corp ID (optional)</label>
+    <input id="wecomCorpId" placeholder="ww00000000000000" />
+    <div class="muted" style="margin-top: 0.25rem">
+      From <a href="https://work.weixin.qq.com/wework_admin/frame#apps" target="_blank">WeCom Admin</a>:
+      App Management &rarr; create/select agent &rarr; copy Corp ID, Agent ID, Token, and EncodingAESKey.
+    </div>
+
+    <label>WeCom Agent ID (optional)</label>
+    <input id="wecomAgentId" placeholder="1000002" />
+
+    <label>WeCom Token (optional)</label>
+    <input id="wecomToken" type="password" placeholder="Callback token" />
+
+    <label>WeCom EncodingAESKey (optional)</label>
+    <input id="wecomEncodingAESKey" type="password" placeholder="43-char AES key" />
+
+    <label>WeCom Secret (optional)</label>
+    <input id="wecomSecret" type="password" placeholder="Agent secret" />
   </div>
 
   <div class="card">
@@ -830,6 +946,10 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
     ]}
   ];
 
+  const publicDomain = process.env.RAILWAY_PUBLIC_DOMAIN
+    || process.env.RAILWAY_STATIC_URL
+    || "";
+
   res.json({
     configured: isConfigured(),
     gatewayTarget: GATEWAY_TARGET,
@@ -837,6 +957,8 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
     openclawVersion: version.output.trim(),
     channelsAddHelp: channelsHelp.output,
     authGroups,
+    publicDomain,
+    isRailway,
   });
 });
 
@@ -1035,6 +1157,82 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       }
     }
 
+    // WhatsApp channel (QR-link pairing — no tokens, just enable the plugin)
+    if (payload.whatsappEnabled) {
+      if (!supports("whatsapp")) {
+        extra += "\n[whatsapp] skipped (this openclaw build does not list whatsapp in `channels add --help`)\n";
+      } else {
+        const cfgObj = { enabled: true };
+        const set = await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "--json", "channels.whatsapp", JSON.stringify(cfgObj)]),
+        );
+        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "whatsapp"]));
+        extra += `\n[whatsapp config] exit=${set.code}\n${set.output || "(no output)"}`;
+        extra += `\n[whatsapp plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
+        extra += `\n[whatsapp] Enabled. After gateway starts, check logs for QR code: run "openclaw.channels.logs whatsapp" in Terminal.\n`;
+      }
+    }
+
+    // Feishu / Lark channel
+    if (payload.feishuAppId?.trim() || payload.feishuAppSecret?.trim()) {
+      if (!supports("feishu") && !supports("lark")) {
+        extra += "\n[feishu] skipped (this openclaw build does not list feishu/lark in `channels add --help`)\n";
+      } else {
+        const pluginName = supports("feishu") ? "feishu" : "lark";
+        const cfgObj = {
+          enabled: true,
+          appId: payload.feishuAppId?.trim() || undefined,
+          appSecret: payload.feishuAppSecret?.trim() || undefined,
+          encryptKey: payload.feishuEncryptKey?.trim() || undefined,
+          verificationToken: payload.feishuVerificationToken?.trim() || undefined,
+        };
+        const set = await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "--json", `channels.${pluginName}`, JSON.stringify(cfgObj)]),
+        );
+        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", pluginName]));
+        const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", `channels.${pluginName}`]));
+        extra += `\n[${pluginName} config] exit=${set.code}\n${set.output || "(no output)"}`;
+        extra += `\n[${pluginName} plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
+        extra += `\n[${pluginName} verify] exit=${get.code}\n${get.output || "(no output)"}`;
+      }
+    }
+
+    // WeCom channel
+    if (payload.wecomCorpId?.trim() || payload.wecomToken?.trim()) {
+      if (!supports("wecom")) {
+        extra += "\n[wecom] skipped (this openclaw build does not list wecom in `channels add --help`)\n";
+      } else {
+        const cfgObj = {
+          enabled: true,
+          corpId: payload.wecomCorpId?.trim() || undefined,
+          agentId: payload.wecomAgentId?.trim() || undefined,
+          token: payload.wecomToken?.trim() || undefined,
+          encodingAESKey: payload.wecomEncodingAESKey?.trim() || undefined,
+          secret: payload.wecomSecret?.trim() || undefined,
+        };
+        const set = await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "--json", "channels.wecom", JSON.stringify(cfgObj)]),
+        );
+        const enable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "wecom"]));
+        const get = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels.wecom"]));
+        extra += `\n[wecom config] exit=${set.code}\n${set.output || "(no output)"}`;
+        extra += `\n[wecom plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
+        extra += `\n[wecom verify] exit=${get.code}\n${get.output || "(no output)"}`;
+      }
+    }
+
+    // Model configuration (for OpenRouter / multi-model providers)
+    if (payload.model?.trim()) {
+      const modelSet = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "model", payload.model.trim()]),
+      );
+      extra += `\n[model config] exit=${modelSet.code}\n${modelSet.output || `Set model to: ${payload.model.trim()}`}`;
+    }
+
     // Enable the web channel with open DM policy so /openclaw/chat works
     // without pairing. The web UI is already authenticated via gateway token.
     const webCfg = { enabled: true, dm: { policy: "open" } };
@@ -1092,7 +1290,9 @@ function redactSecrets(text) {
     .replace(/(sk-[A-Za-z0-9_-]{10,})/g, "[REDACTED]")
     .replace(/(gho_[A-Za-z0-9_]{10,})/g, "[REDACTED]")
     .replace(/(xox[baprs]-[A-Za-z0-9-]{10,})/g, "[REDACTED]")
-    .replace(/(AA[A-Za-z0-9_-]{10,}:\S{10,})/g, "[REDACTED]");
+    .replace(/(AA[A-Za-z0-9_-]{10,}:\S{10,})/g, "[REDACTED]")
+    .replace(/(cli_[A-Za-z0-9]{10,})/g, "[REDACTED]")
+    .replace(/(EAAG[A-Za-z0-9]{10,})/g, "[REDACTED]");
 }
 
 const ALLOWED_CONSOLE_COMMANDS = new Set([
@@ -1475,6 +1675,10 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`[wrapper] gateway target: ${GATEWAY_TARGET}`);
   if (!SETUP_PASSWORD) {
     console.warn("[wrapper] WARNING: SETUP_PASSWORD is not set; /setup will error.");
+  }
+  if (isRailway && !process.env.RAILWAY_PUBLIC_DOMAIN && !process.env.RAILWAY_STATIC_URL) {
+    console.warn("[wrapper] WARNING: No public domain detected on Railway.");
+    console.warn("[wrapper] Go to Railway Dashboard → Settings → Networking → Public Networking → Generate Domain");
   }
   // Don't start gateway unless configured; proxy will ensure it starts.
 });
