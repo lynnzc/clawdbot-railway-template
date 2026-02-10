@@ -94,6 +94,9 @@ const INTERNAL_GATEWAY_PORT = Number.parseInt(process.env.INTERNAL_GATEWAY_PORT 
 const INTERNAL_GATEWAY_HOST = process.env.INTERNAL_GATEWAY_HOST ?? "127.0.0.1";
 const GATEWAY_TARGET = `http://${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`;
 
+const FEISHU_WEBHOOK_PORT = Number.parseInt(process.env.FEISHU_WEBHOOK_PORT ?? "3000", 10);
+const FEISHU_WEBHOOK_TARGET = `http://127.0.0.1:${FEISHU_WEBHOOK_PORT}`;
+
 // Always run the built-from-source CLI entry directly to avoid PATH/global-install mismatches.
 const OPENCLAW_ENTRY = process.env.OPENCLAW_ENTRY?.trim() || "/openclaw/dist/entry.js";
 const OPENCLAW_NODE = process.env.OPENCLAW_NODE?.trim() || "node";
@@ -176,6 +179,7 @@ async function startGateway() {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "agents.defaults.timeoutSeconds", "600"]));
   } catch (err) {
     console.error("[wrapper] failed to sync gateway config:", err);
   }
@@ -839,22 +843,41 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <option value="lark">Lark (Global)</option>
     </select>
 
+    <label>Connection mode</label>
+    <select id="feishuConnectionMode" style="width: auto; min-width: 200px;">
+      <option value="websocket">WebSocket (recommended for Feishu China)</option>
+      <option value="webhook">Webhook (required for Lark Global)</option>
+    </select>
+
     <label>Feishu / Lark App ID (optional)</label>
     <input id="feishuAppId" placeholder="cli_xxxxxxxxxx" />
     <div class="muted" style="margin-top: 0.25rem">
       From <a href="https://open.feishu.cn/app" target="_blank">Feishu Open Platform</a> or
       <a href="https://open.larksuite.com/app" target="_blank">Lark Developer</a>:
       create app &rarr; Credentials &amp; Basic Info &rarr; copy App ID and App Secret.<br/>
-      Requires plugin <code>@openclaw/feishu</code> (auto-installed).
-      See <a href="https://docs.openclaw.ai/channels/feishu" target="_blank">full docs</a>.
+      See <a href="https://github.com/m1heng/clawdbot-feishu" target="_blank">full docs</a>.
     </div>
 
     <label>Feishu / Lark App Secret (optional)</label>
     <input id="feishuAppSecret" type="password" placeholder="App Secret" />
-    <div class="muted" style="margin-top: 0.25rem">
-      After setup: configure event subscription in Feishu Open Platform &rarr;
-      choose <strong>Use long connection to receive events</strong> (WebSocket) &rarr;
-      add event <code>im.message.receive_v1</code>.
+
+    <div id="feishuWebhookFields" style="display:none">
+      <label>Encrypt Key</label>
+      <input id="feishuEncryptKey" type="password" placeholder="From Events &amp; Callbacks &rarr; Encryption Strategy" />
+
+      <label>Verification Token</label>
+      <input id="feishuVerificationToken" type="password" placeholder="From Events &amp; Callbacks &rarr; Verification Token" />
+
+      <div class="muted" style="margin-top: 0.5rem">
+        <strong>Webhook mode:</strong> after setup, set Request URL in Lark console to:<br/>
+        <code id="feishuWebhookUrl">https://&lt;your-domain&gt;.railway.app/feishu/events</code><br/>
+        Then add event <code>im.message.receive_v1</code>.
+      </div>
+    </div>
+
+    <div id="feishuWsHint" class="muted" style="margin-top: 0.25rem">
+      <strong>WebSocket mode:</strong> after setup, go to Feishu Open Platform &rarr; Events &amp; Callbacks &rarr;
+      choose <strong>Use long connection to receive events</strong> &rarr; add event <code>im.message.receive_v1</code>.
     </div>
 
     <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
@@ -1078,6 +1101,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "agents.defaults.timeoutSeconds", "600"]));
 
     const channelsHelp = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
     const helpText = channelsHelp.output || "";
@@ -1186,10 +1210,18 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     // Feishu / Lark channel (plugin pre-installed in Docker image at /openclaw/extensions/feishu)
     if (payload.feishuAppId?.trim() && payload.feishuAppSecret?.trim()) {
       const isLark = payload.feishuDomain === "lark";
+      const isWebhook = payload.feishuConnectionMode === "webhook";
       const cfgObj = {
         enabled: true,
         dmPolicy: "pairing",
         ...(isLark ? { domain: "lark" } : {}),
+        connectionMode: isWebhook ? "webhook" : "websocket",
+        ...(isWebhook ? {
+          webhookPort: 3000,
+          webhookPath: "/feishu/events",
+          ...(payload.feishuEncryptKey?.trim() ? { encryptKey: payload.feishuEncryptKey.trim() } : {}),
+          ...(payload.feishuVerificationToken?.trim() ? { verificationToken: payload.feishuVerificationToken.trim() } : {}),
+        } : {}),
         accounts: {
           main: {
             appId: payload.feishuAppId.trim(),
@@ -1206,7 +1238,13 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       extra += `\n[feishu config] exit=${set.code}\n${set.output || "(no output)"}`;
       extra += `\n[feishu plugin] exit=${enable.code}\n${enable.output || "(no output)"}`;
       extra += `\n[feishu verify] exit=${get.code}\n${get.output || "(no output)"}`;
-      extra += `\n[feishu] Note: you still need to configure event subscription (WebSocket long connection + im.message.receive_v1) in the Feishu/Lark Open Platform.\n`;
+      if (isWebhook) {
+        extra += `\n[feishu] Webhook mode enabled on port 3000, path /feishu/events.`;
+        extra += `\n[feishu] Set Request URL in Lark console to: https://<your-domain>/feishu/events`;
+        extra += `\n[feishu] Add event: im.message.receive_v1\n`;
+      } else {
+        extra += `\n[feishu] WebSocket mode. Configure event subscription: long connection + im.message.receive_v1\n`;
+      }
     }
 
     // WeCom channel
@@ -1685,6 +1723,18 @@ const proxy = httpProxy.createProxyServer({
 
 proxy.on("error", (err, _req, _res) => {
   console.error("[proxy]", err);
+});
+
+// Feishu/Lark webhook: the feishu plugin runs its own HTTP server on a separate port.
+// Proxy /feishu/events to that server so Lark callbacks reach the plugin.
+app.all("/feishu/events", async (req, res) => {
+  if (!isConfigured()) return res.redirect("/setup");
+  try {
+    await ensureGatewayRunning();
+  } catch (err) {
+    return res.status(503).type("text/plain").send(`Gateway not ready: ${String(err)}`);
+  }
+  return proxy.web(req, res, { target: FEISHU_WEBHOOK_TARGET });
 });
 
 app.use(async (req, res) => {

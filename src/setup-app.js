@@ -105,6 +105,31 @@
     authGroupEl.onchange();
   }
 
+  // Feishu: toggle webhook fields and auto-select connection mode based on domain
+  var feishuDomainEl = document.getElementById('feishuDomain');
+  var feishuModeEl = document.getElementById('feishuConnectionMode');
+
+  function updateFeishuFields() {
+    var webhookFields = document.getElementById('feishuWebhookFields');
+    var wsHint = document.getElementById('feishuWsHint');
+    if (!feishuModeEl || !webhookFields) return;
+    var isWebhook = feishuModeEl.value === 'webhook';
+    webhookFields.style.display = isWebhook ? 'block' : 'none';
+    if (wsHint) wsHint.style.display = isWebhook ? 'none' : 'block';
+  }
+
+  if (feishuDomainEl) {
+    feishuDomainEl.onchange = function () {
+      if (feishuModeEl && feishuDomainEl.value === 'lark') {
+        feishuModeEl.value = 'webhook';
+      }
+      updateFeishuFields();
+    };
+  }
+  if (feishuModeEl) {
+    feishuModeEl.onchange = updateFeishuFields;
+  }
+
   function httpJson(url, opts) {
     opts = opts || {};
     opts.credentials = 'same-origin';
@@ -431,8 +456,11 @@
       slackAppToken: document.getElementById('slackAppToken').value,
       whatsappEnabled: !!(document.getElementById('whatsappEnabled') && document.getElementById('whatsappEnabled').checked),
       feishuDomain: (document.getElementById('feishuDomain') || {}).value || 'feishu',
+      feishuConnectionMode: (document.getElementById('feishuConnectionMode') || {}).value || 'websocket',
       feishuAppId: (document.getElementById('feishuAppId') || {}).value || '',
       feishuAppSecret: (document.getElementById('feishuAppSecret') || {}).value || '',
+      feishuEncryptKey: (document.getElementById('feishuEncryptKey') || {}).value || '',
+      feishuVerificationToken: (document.getElementById('feishuVerificationToken') || {}).value || '',
       wecomCorpId: (document.getElementById('wecomCorpId') || {}).value || '',
       wecomAgentId: (document.getElementById('wecomAgentId') || {}).value || '',
       wecomToken: (document.getElementById('wecomToken') || {}).value || '',
