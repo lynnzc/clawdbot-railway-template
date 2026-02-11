@@ -462,6 +462,11 @@
         }
       }
 
+      var whatsappQrAction = document.getElementById('whatsappQrAction');
+      if (whatsappQrAction) {
+        whatsappQrAction.style.display = j.configured ? 'block' : 'none';
+      }
+
       if (configReloadEl && configTextEl) {
         loadConfigRaw();
       }

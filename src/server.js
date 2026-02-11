@@ -1014,10 +1014,14 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
         Enable WhatsApp (QR link pairing)
       </label>
       <div class="muted" style="margin-top:0.25rem">
-        WhatsApp uses QR code pairing via Linked Devices. After setup, run
-        <code>openclaw.channels.logs whatsapp</code> in Terminal to see the QR code,
-        then scan it with WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device.<br/>
+        WhatsApp uses QR code pairing via Linked Devices.
+        Complete setup first, then open the Control Panel to scan your WhatsApp QR code.<br/>
         Credentials are stored under <code>/data/.openclaw/credentials/whatsapp/</code>.
+      </div>
+      <div id="whatsappQrAction" style="display:none; margin-top:0.75rem;">
+        <a href="/" target="_blank" class="btn-primary" style="display:inline-block; text-decoration:none; text-align:center;">
+          Open Control Panel for QR Login &rarr;
+        </a>
       </div>
     </div>
 
