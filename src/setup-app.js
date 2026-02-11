@@ -105,6 +105,25 @@
     authGroupEl.onchange();
   }
 
+  // Channel tabs
+  var channelTabsEl = document.getElementById('channelTabs');
+  if (channelTabsEl) {
+    var tabs = channelTabsEl.querySelectorAll('.channel-tab');
+    var panels = document.querySelectorAll('.channel-panel');
+    for (var t = 0; t < tabs.length; t++) {
+      (function (tab) {
+        tab.onclick = function () {
+          var target = tab.getAttribute('data-tab');
+          for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+          for (var j = 0; j < panels.length; j++) panels[j].classList.remove('active');
+          tab.classList.add('active');
+          var panel = document.querySelector('.channel-panel[data-panel="' + target + '"]');
+          if (panel) panel.classList.add('active');
+        };
+      })(tabs[t]);
+    }
+  }
+
   // Feishu: toggle webhook fields and auto-select connection mode based on domain
   var feishuDomainEl = document.getElementById('feishuDomain');
   var feishuModeEl = document.getElementById('feishuConnectionMode');

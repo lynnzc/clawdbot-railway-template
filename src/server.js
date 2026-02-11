@@ -285,6 +285,23 @@ function requireSetupAuth(req, res, next) {
 
 const app = express();
 app.disable("x-powered-by");
+
+// Feishu/Lark webhook: proxy BEFORE body parsing so the raw request stream
+// reaches the feishu plugin's HTTP server intact (needed for Lark challenge verification).
+const feishuProxy = httpProxy.createProxyServer({ target: FEISHU_WEBHOOK_TARGET, xfwd: true });
+feishuProxy.on("error", (err, _req, _res) => {
+  console.error("[feishu-proxy]", err);
+});
+app.all("/feishu/events", async (req, res) => {
+  if (!isConfigured()) return res.redirect("/setup");
+  try {
+    await ensureGatewayRunning();
+  } catch (err) {
+    return res.status(503).type("text/plain").send(`Gateway not ready: ${String(err)}`);
+  }
+  return feishuProxy.web(req, res);
+});
+
 app.use(express.json({ limit: "1mb" }));
 
 // Health endpoint for Railway and monitoring.
@@ -502,6 +519,44 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     }
     .btn-danger:hover {
       background: #c53030;
+    }
+    .channel-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid #e2e8f0;
+      margin-bottom: 1.25rem;
+      overflow-x: auto;
+    }
+    .channel-tab {
+      padding: 0.625rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #718096;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      box-shadow: none;
+      border-radius: 0;
+      white-space: nowrap;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .channel-tab:hover {
+      color: #0f766e;
+      background: none;
+      transform: none;
+      box-shadow: none;
+    }
+    .channel-tab.active {
+      color: #0f766e;
+      border-bottom-color: #0f766e;
+    }
+    .channel-panel {
+      display: none;
+    }
+    .channel-panel.active {
+      display: block;
     }
     .terminal-actions {
       display: flex;
@@ -802,104 +857,118 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <h2><span class="step-number">2</span> Messaging Channels (Optional)</h2>
     <p class="muted">Connect your messaging platforms now, or add them later from the OpenClaw dashboard.</p>
 
-    <label>Telegram bot token (optional)</label>
-    <input id="telegramToken" type="password" placeholder="123456:ABC..." />
-    <div class="muted" style="margin-top: 0.25rem">
-      Get it from BotFather: open Telegram, message <code>@BotFather</code>, run <code>/newbot</code>, then copy the token.
+    <div class="channel-tabs" id="channelTabs">
+      <button class="channel-tab active" data-tab="telegram">Telegram</button>
+      <button class="channel-tab" data-tab="discord">Discord</button>
+      <button class="channel-tab" data-tab="slack">Slack</button>
+      <button class="channel-tab" data-tab="whatsapp">WhatsApp</button>
+      <button class="channel-tab" data-tab="feishu">Feishu / Lark</button>
+      <button class="channel-tab" data-tab="wecom">WeCom</button>
     </div>
 
-    <label>Discord bot token (optional)</label>
-    <input id="discordToken" type="password" placeholder="Bot token" />
-    <div class="muted" style="margin-top: 0.25rem">
-      Get it from the Discord Developer Portal: create an application, add a Bot, then copy the Bot Token.<br/>
-      <strong>Important:</strong> Enable <strong>MESSAGE CONTENT INTENT</strong> in Bot &rarr; Privileged Gateway Intents, or the bot cannot read messages.<br/>
-      The bot will respond to DMs and messages in any server it is invited to.
-    </div>
-
-    <label>Slack bot token (optional)</label>
-    <input id="slackBotToken" type="password" placeholder="xoxb-..." />
-
-    <label>Slack app token (optional)</label>
-    <input id="slackAppToken" type="password" placeholder="xapp-..." />
-
-    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
-
-    <label style="display: inline-flex; align-items: center; gap: 0.5rem; text-transform: none; font-size: 1rem;">
-      <input id="whatsappEnabled" type="checkbox" style="width: auto; margin: 0;" />
-      Enable WhatsApp (QR link pairing)
-    </label>
-    <div class="muted" style="margin-top: 0.25rem">
-      WhatsApp uses QR code pairing via Linked Devices. After setup completes, run
-      <code>openclaw.channels.logs whatsapp</code> in the Terminal above to see the QR code,
-      then scan it with WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device.<br/>
-      Credentials are stored under <code>/data/.openclaw/credentials/whatsapp/</code> for future runs.
-    </div>
-
-    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
-
-    <label>Feishu / Lark domain</label>
-    <select id="feishuDomain" style="width: auto; min-width: 200px;">
-      <option value="feishu">Feishu (China)</option>
-      <option value="lark">Lark (Global)</option>
-    </select>
-
-    <label>Connection mode</label>
-    <select id="feishuConnectionMode" style="width: auto; min-width: 200px;">
-      <option value="websocket">WebSocket (recommended for Feishu China)</option>
-      <option value="webhook">Webhook (required for Lark Global)</option>
-    </select>
-
-    <label>Feishu / Lark App ID (optional)</label>
-    <input id="feishuAppId" placeholder="cli_xxxxxxxxxx" />
-    <div class="muted" style="margin-top: 0.25rem">
-      From <a href="https://open.feishu.cn/app" target="_blank">Feishu Open Platform</a> or
-      <a href="https://open.larksuite.com/app" target="_blank">Lark Developer</a>:
-      create app &rarr; Credentials &amp; Basic Info &rarr; copy App ID and App Secret.<br/>
-      See <a href="https://github.com/m1heng/clawdbot-feishu" target="_blank">full docs</a>.
-    </div>
-
-    <label>Feishu / Lark App Secret (optional)</label>
-    <input id="feishuAppSecret" type="password" placeholder="App Secret" />
-
-    <div id="feishuWebhookFields" style="display:none">
-      <label>Encrypt Key</label>
-      <input id="feishuEncryptKey" type="password" placeholder="From Events &amp; Callbacks &rarr; Encryption Strategy" />
-
-      <label>Verification Token</label>
-      <input id="feishuVerificationToken" type="password" placeholder="From Events &amp; Callbacks &rarr; Verification Token" />
-
-      <div class="muted" style="margin-top: 0.5rem">
-        <strong>Webhook mode:</strong> after setup, set Request URL in Lark console to:<br/>
-        <code id="feishuWebhookUrl">https://&lt;your-domain&gt;.railway.app/feishu/events</code><br/>
-        Then add event <code>im.message.receive_v1</code>.
+    <div class="channel-panel active" data-panel="telegram">
+      <label>Bot Token</label>
+      <input id="telegramToken" type="password" placeholder="123456:ABC..." />
+      <div class="muted" style="margin-top: 0.25rem">
+        Get it from BotFather: open Telegram, message <code>@BotFather</code>, run <code>/newbot</code>, then copy the token.
       </div>
     </div>
 
-    <div id="feishuWsHint" class="muted" style="margin-top: 0.25rem">
-      <strong>WebSocket mode:</strong> after setup, go to Feishu Open Platform &rarr; Events &amp; Callbacks &rarr;
-      choose <strong>Use long connection to receive events</strong> &rarr; add event <code>im.message.receive_v1</code>.
+    <div class="channel-panel" data-panel="discord">
+      <label>Bot Token</label>
+      <input id="discordToken" type="password" placeholder="Bot token" />
+      <div class="muted" style="margin-top: 0.25rem">
+        Get it from the Discord Developer Portal: create an application, add a Bot, then copy the Bot Token.<br/>
+        <strong>Important:</strong> Enable <strong>MESSAGE CONTENT INTENT</strong> in Bot &rarr; Privileged Gateway Intents, or the bot cannot read messages.<br/>
+        The bot will respond to DMs and messages in any server it is invited to.
+      </div>
     </div>
 
-    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #e2e8f0;" />
-
-    <label>WeCom Corp ID (optional)</label>
-    <input id="wecomCorpId" placeholder="ww00000000000000" />
-    <div class="muted" style="margin-top: 0.25rem">
-      From <a href="https://work.weixin.qq.com/wework_admin/frame#apps" target="_blank">WeCom Admin</a>:
-      App Management &rarr; create/select agent &rarr; copy Corp ID, Agent ID, Token, and EncodingAESKey.
+    <div class="channel-panel" data-panel="slack">
+      <label>Bot Token</label>
+      <input id="slackBotToken" type="password" placeholder="xoxb-..." />
+      <label>App Token</label>
+      <input id="slackAppToken" type="password" placeholder="xapp-..." />
     </div>
 
-    <label>WeCom Agent ID (optional)</label>
-    <input id="wecomAgentId" placeholder="1000002" />
+    <div class="channel-panel" data-panel="whatsapp">
+      <label style="display: inline-flex; align-items: center; gap: 0.5rem; text-transform: none; font-size: 1rem;">
+        <input id="whatsappEnabled" type="checkbox" style="width: auto; margin: 0;" />
+        Enable WhatsApp (QR link pairing)
+      </label>
+      <div class="muted" style="margin-top: 0.25rem">
+        WhatsApp uses QR code pairing via Linked Devices. After setup completes, run
+        <code>openclaw.channels.logs whatsapp</code> in the Terminal above to see the QR code,
+        then scan it with WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device.<br/>
+        Credentials are stored under <code>/data/.openclaw/credentials/whatsapp/</code> for future runs.
+      </div>
+    </div>
 
-    <label>WeCom Token (optional)</label>
-    <input id="wecomToken" type="password" placeholder="Callback token" />
+    <div class="channel-panel" data-panel="feishu">
+      <label>Domain</label>
+      <select id="feishuDomain" style="width: auto; min-width: 200px;">
+        <option value="feishu">Feishu (China)</option>
+        <option value="lark">Lark (Global)</option>
+      </select>
 
-    <label>WeCom EncodingAESKey (optional)</label>
-    <input id="wecomEncodingAESKey" type="password" placeholder="43-char AES key" />
+      <label>Connection Mode</label>
+      <select id="feishuConnectionMode" style="width: auto; min-width: 200px;">
+        <option value="websocket">WebSocket (recommended for Feishu China)</option>
+        <option value="webhook">Webhook (required for Lark Global)</option>
+      </select>
 
-    <label>WeCom Secret (optional)</label>
-    <input id="wecomSecret" type="password" placeholder="Agent secret" />
+      <label>App ID</label>
+      <input id="feishuAppId" placeholder="cli_xxxxxxxxxx" />
+      <div class="muted" style="margin-top: 0.25rem">
+        From <a href="https://open.feishu.cn/app" target="_blank">Feishu Open Platform</a> or
+        <a href="https://open.larksuite.com/app" target="_blank">Lark Developer</a>:
+        create app &rarr; Credentials &amp; Basic Info &rarr; copy App ID and App Secret.<br/>
+        See <a href="https://github.com/m1heng/clawdbot-feishu" target="_blank">full docs</a>.
+      </div>
+
+      <label>App Secret</label>
+      <input id="feishuAppSecret" type="password" placeholder="App Secret" />
+
+      <div id="feishuWebhookFields" style="display:none">
+        <label>Encrypt Key</label>
+        <input id="feishuEncryptKey" type="password" placeholder="From Events &amp; Callbacks &rarr; Encryption Strategy" />
+
+        <label>Verification Token</label>
+        <input id="feishuVerificationToken" type="password" placeholder="From Events &amp; Callbacks &rarr; Verification Token" />
+
+        <div class="muted" style="margin-top: 0.5rem">
+          <strong>Webhook mode:</strong> after setup, set Request URL in Lark console to:<br/>
+          <code id="feishuWebhookUrl">https://&lt;your-domain&gt;.railway.app/feishu/events</code><br/>
+          Then add event <code>im.message.receive_v1</code>.
+        </div>
+      </div>
+
+      <div id="feishuWsHint" class="muted" style="margin-top: 0.25rem">
+        <strong>WebSocket mode:</strong> after setup, go to Feishu Open Platform &rarr; Events &amp; Callbacks &rarr;
+        choose <strong>Use long connection to receive events</strong> &rarr; add event <code>im.message.receive_v1</code>.
+      </div>
+    </div>
+
+    <div class="channel-panel" data-panel="wecom">
+      <label>Corp ID</label>
+      <input id="wecomCorpId" placeholder="ww00000000000000" />
+      <div class="muted" style="margin-top: 0.25rem">
+        From <a href="https://work.weixin.qq.com/wework_admin/frame#apps" target="_blank">WeCom Admin</a>:
+        App Management &rarr; create/select agent &rarr; copy Corp ID, Agent ID, Token, and EncodingAESKey.
+      </div>
+
+      <label>Agent ID</label>
+      <input id="wecomAgentId" placeholder="1000002" />
+
+      <label>Token</label>
+      <input id="wecomToken" type="password" placeholder="Callback token" />
+
+      <label>EncodingAESKey</label>
+      <input id="wecomEncodingAESKey" type="password" placeholder="43-char AES key" />
+
+      <label>Secret</label>
+      <input id="wecomSecret" type="password" placeholder="Agent secret" />
+    </div>
   </div>
 
   <div class="card">
@@ -1739,18 +1808,6 @@ const proxy = httpProxy.createProxyServer({
 
 proxy.on("error", (err, _req, _res) => {
   console.error("[proxy]", err);
-});
-
-// Feishu/Lark webhook: the feishu plugin runs its own HTTP server on a separate port.
-// Proxy /feishu/events to that server so Lark callbacks reach the plugin.
-app.all("/feishu/events", async (req, res) => {
-  if (!isConfigured()) return res.redirect("/setup");
-  try {
-    await ensureGatewayRunning();
-  } catch (err) {
-    return res.status(503).type("text/plain").send(`Gateway not ready: ${String(err)}`);
-  }
-  return proxy.web(req, res, { target: FEISHU_WEBHOOK_TARGET });
 });
 
 app.use(async (req, res) => {
