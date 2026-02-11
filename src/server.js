@@ -193,9 +193,9 @@ async function startGateway() {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "agents.defaults.timeoutSeconds", "600"]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "agents.defaults.timeoutSeconds", "600"]));
     // Skip device pairing for Control UI — the wrapper proxy handles auth via SETUP_PASSWORD.
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "gateway.controlUi.allowInsecureAuth", "true"]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "gateway.controlUi.allowInsecureAuth", "true"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]']));
     // Register bundled skills dir so OpenClaw loads them natively.
     if (fs.existsSync(BUNDLED_SKILLS_DIR)) {
@@ -1116,7 +1116,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <h2 class="section-title">Pairing</h2>
     <p class="section-desc">Approve DM access for channels that use pairing mode.</p>
     <div class="field-row">
-      <select id="pairingChannel" style="width:auto; min-width:140px;">
+      <select id="pairingChannel" style="width:260px;">
         <option value="discord">Discord</option>
         <option value="telegram">Telegram</option>
         <option value="web">Web</option>
@@ -1127,7 +1127,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     </div>
     <pre id="pairingOut" style="white-space:pre-wrap;"></pre>
     <div class="field-row">
-      <input id="pairingCode" placeholder="Pairing code (e.g. 3EY4PUYS)" style="max-width:260px;" />
+      <input id="pairingCode" placeholder="Pairing code (e.g. 3EY4PUYS)" style="width:260px;" />
       <button id="pairingApprove" class="btn-primary">Approve</button>
     </div>
   </section>
@@ -1197,6 +1197,63 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
     || process.env.RAILWAY_STATIC_URL
     || "";
 
+  // Read current provider/model from config so the UI can reflect actual state.
+  let currentProvider = "";
+  let currentAuthChoice = "";
+  let currentModel = "";
+  try {
+    const p = configPath();
+    if (fs.existsSync(p)) {
+      const cfg = JSON.parse(fs.readFileSync(p, "utf8"));
+      const modelVal = cfg?.agents?.defaults?.model;
+      if (typeof modelVal === "string") {
+        currentModel = modelVal;
+      } else if (modelVal && typeof modelVal === "object" && modelVal.primary) {
+        currentModel = modelVal.primary;
+      }
+      const profiles = cfg?.auth?.profiles || {};
+      const profileKeys = Object.keys(profiles);
+      if (profileKeys.length > 0) {
+        const firstProfile = profiles[profileKeys[0]];
+        const providerName = firstProfile?.provider || profileKeys[0].split(":")[0] || "";
+        const providerMap = {
+          anthropic: "anthropic",
+          openai: "openai",
+          openrouter: "openrouter",
+          google: "google",
+          gemini: "google",
+          moonshot: "moonshot",
+          "ai-gateway": "ai-gateway",
+          zai: "zai",
+          minimax: "minimax",
+          synthetic: "synthetic",
+          venice: "venice",
+          "opencode-zen": "opencode-zen",
+        };
+        currentProvider = providerMap[providerName] || providerName;
+        const modeMap = {
+          api_key: {
+            anthropic: "apiKey",
+            openai: "openai-api-key",
+            openrouter: "openrouter-api-key",
+            google: "gemini-api-key",
+            "ai-gateway": "ai-gateway-api-key",
+            moonshot: "moonshot-api-key",
+            zai: "zai-api-key",
+            minimax: "minimax-api",
+            synthetic: "synthetic-api-key",
+            venice: "venice-api-key",
+            "opencode-zen": "opencode-zen",
+          },
+        };
+        const mode = firstProfile?.mode || "";
+        if (modeMap[mode] && modeMap[mode][providerName]) {
+          currentAuthChoice = modeMap[mode][providerName];
+        }
+      }
+    }
+  } catch (_e) { /* ignore parse errors */ }
+
   res.json({
     configured: isConfigured(),
     gatewayTarget: GATEWAY_TARGET,
@@ -1206,6 +1263,9 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
     authGroups,
     publicDomain,
     isRailway,
+    currentProvider,
+    currentAuthChoice,
+    currentModel,
   });
 });
 
@@ -1316,8 +1376,10 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         if (providerPrefix && !m.startsWith(providerPrefix + "/")) {
           m = providerPrefix + "/" + m;
         }
-        const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "agents.defaults.model", m]));
-        extra += `[model config] Set agents.defaults.model=${m} (exit=${r.code})\n`;
+        // Use agents.defaults.model.primary to preserve the object structure
+        // (OpenClaw's onboard creates {primary, fallbacks} format).
+        const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "agents.defaults.model.primary", m]));
+        extra += `[model config] Set agents.defaults.model.primary=${m} (exit=${r.code})\n`;
         if (r.code === 0) changed = true;
       }
 
@@ -1354,7 +1416,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.remote.token", OPENCLAW_GATEWAY_TOKEN]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
-    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "agents.defaults.timeoutSeconds", "600"]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "agents.defaults.timeoutSeconds", "600"]));
 
     const channelsHelp = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "add", "--help"]));
     const helpText = channelsHelp.output || "";
@@ -1535,8 +1597,9 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       if (providerPrefix && !m.startsWith(providerPrefix + "/")) {
         m = providerPrefix + "/" + m;
       }
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "agents.defaults.model", m]));
-      extra += `\n[model config] Set agents.defaults.model=${m} (exit=${r.code})`;
+      // Use agents.defaults.model.primary to preserve the object structure.
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "agents.defaults.model.primary", m]));
+      extra += `\n[model config] Set agents.defaults.model.primary=${m} (exit=${r.code})`;
       if (r.output?.trim()) extra += `\n${r.output.trim()}`;
     }
 

@@ -466,6 +466,33 @@
         loadConfigRaw();
       }
 
+      // Sync Provider UI with current config values.
+      if (j.currentProvider) {
+        authGroupEl.value = j.currentProvider;
+        authGroupEl.onchange();
+      }
+      if (j.currentAuthChoice) {
+        authChoiceEl.value = j.currentAuthChoice;
+      }
+      if (j.currentModel) {
+        var modelSelectEl = document.getElementById('modelSelect');
+        var modelCustomEl = document.getElementById('modelCustom');
+        if (modelSelectEl && modelCustomEl) {
+          var found = false;
+          for (var mi = 0; mi < modelSelectEl.options.length; mi++) {
+            if (modelSelectEl.options[mi].value === j.currentModel) {
+              modelSelectEl.value = j.currentModel;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            modelSelectEl.value = '';
+            modelCustomEl.value = j.currentModel;
+          }
+        }
+      }
+
     }).catch(function (e) {
       setStatus('Error: ' + String(e));
     });
