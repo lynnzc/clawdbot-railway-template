@@ -26,7 +26,7 @@
   var importRunEl = document.getElementById('importRun');
   var importOutEl = document.getElementById('importOut');
 
-  // Command allowlist for autocomplete
+  // Autocomplete suggestions (not an allowlist — any openclaw.* or gateway.* command is accepted)
   var COMMANDS = [
     'gateway.restart',
     'gateway.stop',
@@ -46,7 +46,12 @@
     'openclaw.plugins.enable',
     'openclaw.plugins.disable',
     'openclaw.pairing.list',
-    'openclaw.pairing.approve'
+    'openclaw.pairing.approve',
+    'openclaw.devices.list',
+    'openclaw.devices.approve',
+    'openclaw.devices.revoke',
+    'openclaw.security.audit',
+    'openclaw.sessions.list'
   ];
 
   // Command history (session-scoped)
@@ -122,6 +127,23 @@
         };
       })(tabs[t]);
     }
+  }
+
+  // Section navigation (sidebar)
+  var navLinks = document.querySelectorAll('.sidebar-nav a[data-nav]');
+  var sections = document.querySelectorAll('.section[data-section]');
+  for (var n = 0; n < navLinks.length; n++) {
+    (function (link) {
+      link.onclick = function (e) {
+        e.preventDefault();
+        var target = link.getAttribute('data-nav');
+        for (var i = 0; i < navLinks.length; i++) navLinks[i].classList.remove('active');
+        for (var j = 0; j < sections.length; j++) sections[j].classList.remove('active');
+        link.classList.add('active');
+        var sec = document.querySelector('.section[data-section="' + target + '"]');
+        if (sec) sec.classList.add('active');
+      };
+    })(navLinks[n]);
   }
 
   // Feishu: toggle webhook fields and auto-select connection mode based on domain
@@ -205,15 +227,14 @@
     }
 
     // Normalize: allow shorthand without "openclaw." prefix for non-gateway commands
-    if (cmd.indexOf('.') === -1 && cmd !== 'gateway') {
-      // Bare words like "health", "status", "logs" etc.
+    if (cmd.indexOf('.') === -1 && cmd.indexOf('gateway') !== 0) {
       cmd = 'openclaw.' + cmd;
     }
 
-    // Check if the command is in the allowlist
-    if (COMMANDS.indexOf(cmd) === -1) {
+    // Accept any openclaw.* or gateway.* command (server validates)
+    if (cmd.indexOf('openclaw.') !== 0 && cmd.indexOf('gateway.') !== 0) {
       termAppendCmd(input);
-      termAppendResult('Unknown command: ' + cmd + '\nAvailable: ' + COMMANDS.join(', '), false);
+      termAppendResult('Commands must start with openclaw.* or gateway.*\nSuggestions: ' + COMMANDS.slice(0, 10).join(', ') + ' ...', false);
       return;
     }
 
@@ -414,11 +435,13 @@
   function refreshStatus() {
     setStatus('<span class="loading"></span> Loading status...');
     return httpJson('/setup/api/status').then(function (j) {
-      var ver = j.openclawVersion ? (' | v' + j.openclawVersion) : '';
+      var ver = j.openclawVersion || '';
       var badge = j.configured
         ? '<span class="status-badge configured">Configured</span>'
         : '<span class="status-badge not-configured">Not Configured</span>';
-      setStatus(badge + ver);
+      setStatus(badge + (ver ? ' <span style="color:#888; font-size:0.75rem;">v' + ver + '</span>' : ''));
+      var sidebarVerEl = document.getElementById('sidebarVer');
+      if (sidebarVerEl && ver) sidebarVerEl.textContent = 'v' + ver;
       renderAuth(j.authGroups || []);
 
       if (j.channelsAddHelp && j.channelsAddHelp.indexOf('telegram') === -1) {

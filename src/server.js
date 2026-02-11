@@ -180,6 +180,9 @@ async function startGateway() {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "agents.defaults.timeoutSeconds", "600"]));
+    image.png    // Skip device pairing for Control UI — the wrapper proxy handles auth via SETUP_PASSWORD.
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "gateway.controlUi.allowInsecureAuth", "true"]));
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]']));
   } catch (err) {
     console.error("[wrapper] failed to sync gateway config:", err);
   }
@@ -360,262 +363,269 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenClaw Setup</title>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      margin: 0;
-      padding: 2rem;
-      max-width: 900px;
-      background: #1a1a2e;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f8f8;
+      color: #111;
       min-height: 100vh;
     }
-    .container {
-      background: white;
-      border-radius: 16px;
-      padding: 2rem;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    .layout {
+      display: flex;
+      min-height: 100vh;
     }
-    h1 {
-      margin-top: 0;
-      color: #1a202c;
-      font-size: 2rem;
+    .sidebar {
+      width: 200px;
+      background: #111;
+      color: #999;
+      padding: 1.5rem 0;
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .sidebar-brand {
+      padding: 0 1.25rem 1.25rem;
+      border-bottom: 1px solid #222;
       margin-bottom: 0.5rem;
     }
-    .subtitle {
-      color: #718096;
-      margin-bottom: 2rem;
-      font-size: 1rem;
-    }
-    .card {
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin: 1.5rem 0;
-      background: #fafafa;
-      transition: all 0.3s ease;
-    }
-    .card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .card h2 {
-      margin-top: 0;
-      color: #2d3748;
-      font-size: 1.25rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .step-number {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      background: #0f766e;
-      color: white;
-      border-radius: 50%;
-      font-size: 0.875rem;
+    .sidebar-brand h1 {
+      font-size: 0.9375rem;
       font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+    .sidebar-brand .sidebar-ver {
+      font-size: 0.75rem;
+      color: #555;
+      margin-top: 0.25rem;
+    }
+    .sidebar-nav a {
+      display: block;
+      padding: 0.5rem 1.25rem;
+      color: #888;
+      text-decoration: none;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .sidebar-nav a:hover {
+      color: #ccc;
+    }
+    .sidebar-nav a.active {
+      color: #fff;
+      border-left-color: #fff;
+    }
+    .main {
+      flex: 1;
+      padding: 2.5rem 3rem;
+      max-width: 780px;
+    }
+    .section {
+      display: none;
+    }
+    .section.active {
+      display: block;
+    }
+    .section-title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 0.25rem;
+    }
+    .section-desc {
+      color: #888;
+      font-size: 0.8125rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
     }
     label {
       display: block;
-      margin-top: 1rem;
+      margin-top: 1.25rem;
       font-weight: 600;
-      color: #2d3748;
-      font-size: 0.875rem;
+      color: #333;
+      font-size: 0.75rem;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.04em;
     }
-    input, select {
+    input, select, textarea {
       width: 100%;
-      padding: 0.75rem;
-      margin-top: 0.5rem;
-      border: 2px solid #e2e8f0;
-      border-radius: 8px;
-      font-size: 1rem;
-      transition: border-color 0.2s ease;
+      padding: 0.5rem 0.625rem;
+      margin-top: 0.375rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      font-family: inherit;
+      background: #fff;
+      color: #111;
+      transition: border-color 0.15s;
     }
-    input:focus, select:focus {
+    input:focus, select:focus, textarea:focus {
       outline: none;
-      border-color: #0d9488;
+      border-color: #111;
     }
     button {
-      padding: 0.875rem 1.5rem;
-      border-radius: 8px;
-      border: 0;
-      background: #0f766e;
-      color: #fff;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      background: #fff;
+      color: #111;
       font-weight: 600;
       cursor: pointer;
-      font-size: 0.9375rem;
-      transition: all 0.2s ease;
-      box-shadow: 0 2px 4px rgba(15, 118, 110, 0.3);
+      font-size: 0.8125rem;
+      transition: background 0.15s, border-color 0.15s;
     }
     button:hover {
-      background: #0d9488;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 8px rgba(13, 148, 136, 0.4);
+      background: #f0f0f0;
+      border-color: #bbb;
     }
-    button:active {
-      transform: translateY(0);
+    .btn-primary {
+      background: #111;
+      color: #fff;
+      border-color: #111;
+    }
+    .btn-primary:hover {
+      background: #333;
+      border-color: #333;
+    }
+    .btn-danger {
+      color: #dc2626;
+      border-color: #fca5a5;
+    }
+    .btn-danger:hover {
+      background: #fef2f2;
+      border-color: #dc2626;
     }
     code {
-      background: #edf2f7;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
+      background: #f0f0f0;
+      padding: 0.125rem 0.375rem;
+      border-radius: 3px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.875rem;
+      font-size: 0.8125rem;
     }
     .muted {
-      color: #718096;
-      font-size: 0.875rem;
+      color: #888;
+      font-size: 0.8125rem;
       line-height: 1.6;
     }
+    a { color: #111; }
+    a:hover { color: #555; }
     .status-badge {
       display: inline-block;
-      padding: 0.5rem 1rem;
-      border-radius: 6px;
+      padding: 0.25rem 0.625rem;
+      border-radius: 3px;
       font-weight: 600;
-      font-size: 0.875rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
     .status-badge.configured {
-      background: #c6f6d5;
-      color: #22543d;
+      background: #dcfce7;
+      color: #166534;
     }
     .status-badge.not-configured {
-      background: #fed7d7;
-      color: #742a2a;
+      background: #fef2f2;
+      color: #991b1b;
     }
-    .links {
+    .status-links {
       margin-top: 1rem;
-      padding-top: 1rem;
-      border-top: 1px solid #e2e8f0;
+      display: flex;
+      gap: 1rem;
+      font-size: 0.8125rem;
     }
-    .links a {
-      color: #0d9488;
+    .status-links a {
+      color: #555;
       text-decoration: none;
       font-weight: 500;
     }
-    .links a:hover {
+    .status-links a:hover {
+      color: #111;
       text-decoration: underline;
     }
     pre {
-      background: #1a202c;
-      color: #e2e8f0;
-      padding: 1rem;
-      border-radius: 8px;
+      background: #111;
+      color: #ccc;
+      padding: 0.75rem 1rem;
+      border-radius: 4px;
       overflow-x: auto;
-      font-size: 0.875rem;
+      font-size: 0.8125rem;
       line-height: 1.6;
-    }
-    .btn-secondary {
-      background: #4a5568;
-    }
-    .btn-secondary:hover {
-      background: #2d3748;
-    }
-    .btn-danger {
-      background: #e53e3e;
-    }
-    .btn-danger:hover {
-      background: #c53030;
     }
     .channel-tabs {
       display: flex;
       gap: 0;
-      border-bottom: 2px solid #e2e8f0;
+      border-bottom: 1px solid #ddd;
       margin-bottom: 1.25rem;
       overflow-x: auto;
     }
     .channel-tab {
-      padding: 0.625rem 1rem;
-      font-size: 0.875rem;
+      padding: 0.5rem 0.875rem;
+      font-size: 0.8125rem;
       font-weight: 600;
-      color: #718096;
+      color: #888;
       background: none;
       border: none;
       border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
+      margin-bottom: -1px;
       cursor: pointer;
-      box-shadow: none;
       border-radius: 0;
       white-space: nowrap;
-      transition: color 0.2s, border-color 0.2s;
     }
-    .channel-tab:hover {
-      color: #0f766e;
-      background: none;
-      transform: none;
-      box-shadow: none;
-    }
-    .channel-tab.active {
-      color: #0f766e;
-      border-bottom-color: #0f766e;
-    }
-    .channel-panel {
-      display: none;
-    }
-    .channel-panel.active {
-      display: block;
-    }
+    .channel-tab:hover { color: #111; background: none; }
+    .channel-tab.active { color: #111; border-bottom-color: #111; }
+    .channel-panel { display: none; }
+    .channel-panel.active { display: block; }
     .terminal-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.375rem;
-      margin-bottom: 1rem;
+      gap: 0.25rem;
+      margin-bottom: 0.75rem;
     }
     .terminal-actions button {
-      padding: 0.375rem 0.75rem;
-      font-size: 0.8125rem;
-      border-radius: 999px;
-      background: #edf2f7;
-      color: #2d3748;
-      box-shadow: none;
-      font-weight: 500;
+      padding: 0.25rem 0.625rem;
+      font-size: 0.75rem;
+      border-radius: 3px;
+      background: #f0f0f0;
+      color: #555;
+      border: 1px solid #e5e5e5;
     }
     .terminal-actions button:hover {
-      background: #0f766e;
+      background: #111;
       color: #fff;
-      transform: none;
-      box-shadow: none;
+      border-color: #111;
     }
     .terminal-output {
       background: #0d1117;
       color: #c9d1d9;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.8125rem;
+      font-size: 0.75rem;
       line-height: 1.5;
-      padding: 1rem;
-      border-radius: 8px 8px 0 0;
-      max-height: 400px;
+      padding: 0.75rem;
+      border-radius: 4px 4px 0 0;
+      max-height: 350px;
       overflow-y: auto;
-      min-height: 120px;
+      min-height: 100px;
       white-space: pre-wrap;
       word-break: break-all;
     }
-    .terminal-output .term-cmd {
-      color: #8b949e;
-    }
-    .terminal-output .term-ok {
-      color: #c9d1d9;
-    }
-    .terminal-output .term-err {
-      color: #f85149;
-    }
+    .terminal-output .term-cmd { color: #8b949e; }
+    .terminal-output .term-ok { color: #c9d1d9; }
+    .terminal-output .term-err { color: #f85149; }
     .terminal-input-row {
       display: flex;
       align-items: center;
       background: #161b22;
-      border-radius: 0 0 8px 8px;
+      border-radius: 0 0 4px 4px;
       border-top: 1px solid #30363d;
-      padding: 0;
     }
     .terminal-prompt {
       color: #58a6ff;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.875rem;
+      font-size: 0.8125rem;
       font-weight: 700;
-      padding: 0.625rem 0 0.625rem 0.75rem;
+      padding: 0.5rem 0 0.5rem 0.625rem;
       user-select: none;
     }
     .terminal-input-row input {
@@ -624,118 +634,147 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       border: none;
       color: #c9d1d9;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.8125rem;
-      padding: 0.625rem 0.5rem;
+      font-size: 0.75rem;
+      padding: 0.5rem 0.375rem;
       margin: 0;
       outline: none;
     }
-    .terminal-input-row input::placeholder {
-      color: #484f58;
-    }
+    .terminal-input-row input::placeholder { color: #484f58; }
     .terminal-input-row button {
-      border-radius: 6px;
-      margin: 0.375rem;
-      padding: 0.375rem 0.875rem;
-      font-size: 0.8125rem;
+      border-radius: 3px;
+      margin: 0.25rem;
+      padding: 0.25rem 0.625rem;
+      font-size: 0.75rem;
       background: #238636;
-      box-shadow: none;
+      color: #fff;
+      border: none;
     }
-    .terminal-input-row button:hover {
-      background: #2ea043;
-      transform: none;
-    }
-    .terminal-autocomplete {
-      position: relative;
-    }
+    .terminal-input-row button:hover { background: #2ea043; }
+    .terminal-autocomplete { position: relative; }
     .terminal-suggestions {
       position: absolute;
       bottom: 100%;
-      left: 0;
-      right: 0;
+      left: 0; right: 0;
       background: #1c2128;
       border: 1px solid #30363d;
-      border-radius: 6px;
-      max-height: 180px;
+      border-radius: 4px;
+      max-height: 160px;
       overflow-y: auto;
       display: none;
       z-index: 10;
       margin-bottom: 2px;
     }
-    .terminal-suggestions.visible {
-      display: block;
-    }
+    .terminal-suggestions.visible { display: block; }
     .terminal-suggestions div {
-      padding: 0.375rem 0.75rem;
+      padding: 0.25rem 0.625rem;
       cursor: pointer;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.8125rem;
+      font-size: 0.75rem;
       color: #c9d1d9;
     }
     .terminal-suggestions div:hover,
-    .terminal-suggestions div.active {
-      background: #30363d;
-    }
+    .terminal-suggestions div.active { background: #30363d; }
     .terminal-clear-row {
       display: flex;
       justify-content: flex-end;
-      margin-top: 0.375rem;
+      margin-top: 0.25rem;
     }
     .terminal-clear-row button {
-      padding: 0.25rem 0.625rem;
-      font-size: 0.75rem;
-      background: #4a5568;
-      box-shadow: none;
-      border-radius: 4px;
+      padding: 0.125rem 0.5rem;
+      font-size: 0.6875rem;
+      background: transparent;
+      color: #888;
+      border: 1px solid #ddd;
     }
+    .field-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 0.75rem;
+    }
+    .field-row input { max-width: 280px; }
     .loading {
       display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid #e2e8f0;
-      border-top-color: #0d9488;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #ddd;
+      border-top-color: #111;
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        padding: 0.75rem;
+        gap: 0;
+      }
+      .sidebar-brand { border-bottom: none; padding: 0 0.75rem 0.5rem; width: 100%; margin-bottom: 0; }
+      .sidebar-nav { display: flex; flex-wrap: wrap; gap: 0; }
+      .sidebar-nav a { border-left: none; border-bottom: 2px solid transparent; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+      .sidebar-nav a.active { border-bottom-color: #fff; border-left-color: transparent; }
+      .main { padding: 1.25rem; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>OpenClaw Setup</h1>
-    <p class="subtitle">Configure your personal AI assistant in minutes</p>
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <h1>OpenClaw</h1>
+      <div class="sidebar-ver" id="sidebarVer"></div>
+    </div>
+    <div class="sidebar-nav">
+      <a href="#" data-nav="status" class="active">Status</a>
+      <a href="#" data-nav="terminal">Terminal</a>
+      <a href="#" data-nav="config">Config</a>
+      <a href="#" data-nav="provider">Provider</a>
+      <a href="#" data-nav="channels">Channels</a>
+      <a href="#" data-nav="setup">Setup</a>
+      <a href="#" data-nav="pairing">Pairing</a>
+    </div>
+  </nav>
 
-  <div id="domainBanner" style="display:none; background:#fffbeb; border:1px solid #f59e0b; border-radius:12px; padding:1rem 1.5rem; margin-bottom:1.5rem;">
-    <strong style="color:#92400e;">No public domain detected</strong>
-    <p style="color:#78350f; margin:0.5rem 0 0; font-size:0.875rem; line-height:1.6;">
-      Your Railway service needs a public domain to be accessible from the internet.<br/>
+  <main class="main">
+
+  <div id="domainBanner" style="display:none; background:#fffbeb; border:1px solid #e5c96e; border-radius:4px; padding:0.75rem 1rem; margin-bottom:1.5rem; font-size:0.8125rem;">
+    <strong>No public domain detected</strong>
+    <p style="color:#78350f; margin:0.375rem 0 0; line-height:1.6;">
       Go to Railway Dashboard &rarr; your service &rarr; <strong>Settings</strong> &rarr; <strong>Networking</strong> &rarr;
-      <strong>Public Networking</strong> &rarr; click <strong>Generate Domain</strong>.<br/>
-      After adding the domain, refresh this page.
+      <strong>Public Networking</strong> &rarr; <strong>Generate Domain</strong>. Then refresh this page.
     </p>
   </div>
 
-  <div class="card">
-    <h2>Status</h2>
+  <!-- Status -->
+  <section class="section active" data-section="status">
+    <h2 class="section-title">Status</h2>
+    <p class="section-desc">Gateway health and quick links.</p>
     <div id="status">Loading...</div>
-    <div style="margin-top: 0.75rem">
-      <a id="openClawLink" href="/openclaw" target="_blank">Open OpenClaw UI</a>
-      &nbsp;|&nbsp;
-      <a href="/setup/export" target="_blank">Download backup (.tar.gz)</a>
+    <div class="status-links">
+      <a id="openClawLink" href="/openclaw" target="_blank">Open UI</a>
+      <a href="/setup/export" target="_blank">Export backup</a>
     </div>
-
-    <div style="margin-top: 0.75rem">
-      <div class="muted" style="margin-bottom:0.25rem"><strong>Import backup</strong> (advanced): restores into <code>/data</code> and restarts the gateway.</div>
+    <div style="margin-top: 1.5rem; border-top: 1px solid #eee; padding-top: 1rem;">
+      <label style="margin-top:0">Import backup</label>
+      <p class="muted" style="margin-bottom: 0.5rem;">Restores into <code>/data</code> and restarts the gateway.</p>
       <input id="importFile" type="file" accept=".tar.gz,application/gzip" />
-      <button id="importRun" style="background:#7c2d12; margin-top:0.5rem">Import</button>
+      <div style="margin-top: 0.5rem;">
+        <button id="importRun" class="btn-danger">Import</button>
+      </div>
       <pre id="importOut" style="white-space:pre-wrap"></pre>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2>Terminal</h2>
-    <p class="muted">Run OpenClaw CLI commands. Only allowlisted safe commands are permitted.</p>
+  <!-- Terminal -->
+  <section class="section" data-section="terminal">
+    <h2 class="section-title">Terminal</h2>
+    <p class="section-desc">Run OpenClaw CLI commands directly.</p>
 
     <div class="terminal-actions">
       <button data-cmd="gateway.restart">Restart</button>
@@ -766,23 +805,25 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <div class="terminal-clear-row">
       <button id="terminalClear">Clear</button>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2>Config editor (advanced)</h2>
-    <p class="muted">Edits the full config file on disk (JSON5). Saving creates a timestamped <code>.bak-*</code> backup and restarts the gateway.</p>
-    <div class="muted" id="configPath"></div>
-    <textarea id="configText" style="width:100%; height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;"></textarea>
-    <div style="margin-top:0.5rem">
-      <button id="configReload" style="background:#1f2937">Reload</button>
-      <button id="configSave" style="background:#111; margin-left:0.5rem">Save</button>
+  <!-- Config -->
+  <section class="section" data-section="config">
+    <h2 class="section-title">Config Editor</h2>
+    <p class="section-desc">Edit the full config file (JSON5). Saving creates a backup and restarts the gateway.</p>
+    <div class="muted" id="configPath" style="margin-bottom: 0.5rem;"></div>
+    <textarea id="configText" style="width:100%; height:280px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:0.8125rem; border:1px solid #ddd; border-radius:4px; padding:0.75rem;"></textarea>
+    <div style="margin-top:0.5rem; display:flex; gap:0.5rem;">
+      <button id="configReload">Reload</button>
+      <button id="configSave" class="btn-primary">Save</button>
     </div>
     <pre id="configOut" style="white-space:pre-wrap"></pre>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2><span class="step-number">1</span> Model/Auth Provider</h2>
-    <p class="muted">Choose your AI model provider and authentication method.</p>
+  <!-- Provider -->
+  <section class="section" data-section="provider">
+    <h2 class="section-title">Model / Auth Provider</h2>
+    <p class="section-desc">Choose your AI model provider and authentication method.</p>
     <label>Provider group</label>
     <select id="authGroup"></select>
 
@@ -799,7 +840,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <option value="manual">manual</option>
     </select>
 
-    <div id="modelConfigSection" style="display:none; margin-top: 1.5rem; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; background: #f7fafc;">
+    <div id="modelConfigSection" style="display:none; margin-top:1.5rem; padding:1rem; border:1px solid #eee; border-radius:4px; background:#fafafa;">
       <label style="margin-top:0">Model (optional)</label>
       <select id="modelSelect">
         <option value="">Auto (provider default)</option>
@@ -844,18 +885,19 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
           <option value="arcee-ai/trinity-large-preview:free">Trinity Large (400B MoE)</option>
         </optgroup>
       </select>
-      <input id="modelCustom" placeholder="Or type custom model ID: provider/model-name" style="margin-top: 0.5rem" />
-      <div class="muted" style="margin-top: 0.5rem">
+      <input id="modelCustom" placeholder="Or type custom model ID: provider/model-name" style="margin-top:0.5rem" />
+      <div class="muted" style="margin-top:0.5rem">
         OpenRouter provides 400+ models via one API key. Browse all at
         <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a>.<br/>
         Format: <code>provider/model-name</code>. Custom input overrides dropdown. Leave blank for provider default.
       </div>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2><span class="step-number">2</span> Messaging Channels (Optional)</h2>
-    <p class="muted">Connect your messaging platforms now, or add them later from the OpenClaw dashboard.</p>
+  <!-- Channels -->
+  <section class="section" data-section="channels">
+    <h2 class="section-title">Messaging Channels</h2>
+    <p class="section-desc">Connect messaging platforms. You can add them later from the dashboard too.</p>
 
     <div class="channel-tabs" id="channelTabs">
       <button class="channel-tab active" data-tab="telegram">Telegram</button>
@@ -869,7 +911,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <div class="channel-panel active" data-panel="telegram">
       <label>Bot Token</label>
       <input id="telegramToken" type="password" placeholder="123456:ABC..." />
-      <div class="muted" style="margin-top: 0.25rem">
+      <div class="muted" style="margin-top:0.25rem">
         Get it from BotFather: open Telegram, message <code>@BotFather</code>, run <code>/newbot</code>, then copy the token.
       </div>
     </div>
@@ -877,10 +919,10 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <div class="channel-panel" data-panel="discord">
       <label>Bot Token</label>
       <input id="discordToken" type="password" placeholder="Bot token" />
-      <div class="muted" style="margin-top: 0.25rem">
-        Get it from the Discord Developer Portal: create an application, add a Bot, then copy the Bot Token.<br/>
-        <strong>Important:</strong> Enable <strong>MESSAGE CONTENT INTENT</strong> in Bot &rarr; Privileged Gateway Intents, or the bot cannot read messages.<br/>
-        The bot will respond to DMs and messages in any server it is invited to.
+      <div class="muted" style="margin-top:0.25rem">
+        From the Discord Developer Portal: create an application, add a Bot, copy the Bot Token.<br/>
+        <strong>Important:</strong> Enable <strong>MESSAGE CONTENT INTENT</strong> in Bot &rarr; Privileged Gateway Intents.<br/>
+        The bot responds to DMs and messages in any server it joins.
       </div>
     </div>
 
@@ -892,34 +934,34 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     </div>
 
     <div class="channel-panel" data-panel="whatsapp">
-      <label style="display: inline-flex; align-items: center; gap: 0.5rem; text-transform: none; font-size: 1rem;">
-        <input id="whatsappEnabled" type="checkbox" style="width: auto; margin: 0;" />
+      <label style="display:inline-flex; align-items:center; gap:0.5rem; text-transform:none; font-size:0.875rem;">
+        <input id="whatsappEnabled" type="checkbox" style="width:auto; margin:0;" />
         Enable WhatsApp (QR link pairing)
       </label>
-      <div class="muted" style="margin-top: 0.25rem">
-        WhatsApp uses QR code pairing via Linked Devices. After setup completes, run
-        <code>openclaw.channels.logs whatsapp</code> in the Terminal above to see the QR code,
+      <div class="muted" style="margin-top:0.25rem">
+        WhatsApp uses QR code pairing via Linked Devices. After setup, run
+        <code>openclaw.channels.logs whatsapp</code> in Terminal to see the QR code,
         then scan it with WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device.<br/>
-        Credentials are stored under <code>/data/.openclaw/credentials/whatsapp/</code> for future runs.
+        Credentials are stored under <code>/data/.openclaw/credentials/whatsapp/</code>.
       </div>
     </div>
 
     <div class="channel-panel" data-panel="feishu">
       <label>Domain</label>
-      <select id="feishuDomain" style="width: auto; min-width: 200px;">
+      <select id="feishuDomain" style="width:auto; min-width:200px;">
         <option value="feishu">Feishu (China)</option>
         <option value="lark">Lark (Global)</option>
       </select>
 
       <label>Connection Mode</label>
-      <select id="feishuConnectionMode" style="width: auto; min-width: 200px;">
+      <select id="feishuConnectionMode" style="width:auto; min-width:200px;">
         <option value="websocket">WebSocket (recommended for Feishu China)</option>
         <option value="webhook">Webhook (required for Lark Global)</option>
       </select>
 
       <label>App ID</label>
       <input id="feishuAppId" placeholder="cli_xxxxxxxxxx" />
-      <div class="muted" style="margin-top: 0.25rem">
+      <div class="muted" style="margin-top:0.25rem">
         From <a href="https://open.feishu.cn/app" target="_blank">Feishu Open Platform</a> or
         <a href="https://open.larksuite.com/app" target="_blank">Lark Developer</a>:
         create app &rarr; Credentials &amp; Basic Info &rarr; copy App ID and App Secret.<br/>
@@ -936,14 +978,14 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
         <label>Verification Token</label>
         <input id="feishuVerificationToken" type="password" placeholder="From Events &amp; Callbacks &rarr; Verification Token" />
 
-        <div class="muted" style="margin-top: 0.5rem">
+        <div class="muted" style="margin-top:0.5rem">
           <strong>Webhook mode:</strong> after setup, set Request URL in Lark console to:<br/>
           <code id="feishuWebhookUrl">https://&lt;your-domain&gt;.railway.app/feishu/events</code><br/>
           Then add event <code>im.message.receive_v1</code>.
         </div>
       </div>
 
-      <div id="feishuWsHint" class="muted" style="margin-top: 0.25rem">
+      <div id="feishuWsHint" class="muted" style="margin-top:0.25rem">
         <strong>WebSocket mode:</strong> after setup, go to Feishu Open Platform &rarr; Events &amp; Callbacks &rarr;
         choose <strong>Use long connection to receive events</strong> &rarr; add event <code>im.message.receive_v1</code>.
       </div>
@@ -952,7 +994,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
     <div class="channel-panel" data-panel="wecom">
       <label>Corp ID</label>
       <input id="wecomCorpId" placeholder="ww00000000000000" />
-      <div class="muted" style="margin-top: 0.25rem">
+      <div class="muted" style="margin-top:0.25rem">
         From <a href="https://work.weixin.qq.com/wework_admin/frame#apps" target="_blank">WeCom Admin</a>:
         App Management &rarr; create/select agent &rarr; copy Corp ID, Agent ID, Token, and EncodingAESKey.
       </div>
@@ -969,39 +1011,43 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <label>Secret</label>
       <input id="wecomSecret" type="password" placeholder="Agent secret" />
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2><span class="step-number">3</span> Run Onboarding</h2>
-    <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
-      <button id="run">Start Setup</button>
+  <!-- Setup -->
+  <section class="section" data-section="setup">
+    <h2 class="section-title">Run Onboarding</h2>
+    <p class="section-desc">Start the setup wizard to configure your assistant.</p>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <button id="run" class="btn-primary">Start Setup</button>
       <button id="reset" class="btn-danger">Reset Setup</button>
     </div>
-    <pre id="log" style="white-space:pre-wrap; margin-top: 1rem;"></pre>
-  </div>
+    <pre id="log" style="white-space:pre-wrap; margin-top:1rem;"></pre>
+  </section>
 
-  <div class="card">
-    <h2><span class="step-number">4</span> Pairing</h2>
-    <p class="muted">Approve DM access for channels that use pairing mode. Select a channel, check pending requests, then approve with the code.</p>
-    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.75rem;">
-      <select id="pairingChannel" style="width: auto; min-width: 140px;">
+  <!-- Pairing -->
+  <section class="section" data-section="pairing">
+    <h2 class="section-title">Pairing</h2>
+    <p class="section-desc">Approve DM access for channels that use pairing mode.</p>
+    <div class="field-row">
+      <select id="pairingChannel" style="width:auto; min-width:140px;">
         <option value="discord">Discord</option>
         <option value="telegram">Telegram</option>
         <option value="web">Web</option>
         <option value="feishu">Feishu</option>
         <option value="slack">Slack</option>
       </select>
-      <button id="pairingList" class="btn-secondary">List Pending</button>
+      <button id="pairingList">List Pending</button>
     </div>
-    <pre id="pairingOut" style="white-space:pre-wrap; margin-top: 0.75rem; min-height: 2rem;"></pre>
-    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.5rem;">
-      <input id="pairingCode" placeholder="Pairing code (e.g. 3EY4PUYS)" style="max-width: 260px;" />
-      <button id="pairingApprove" class="btn-secondary">Approve</button>
+    <pre id="pairingOut" style="white-space:pre-wrap; margin-top:0.75rem; min-height:2rem;"></pre>
+    <div class="field-row">
+      <input id="pairingCode" placeholder="Pairing code (e.g. 3EY4PUYS)" style="max-width:260px;" />
+      <button id="pairingApprove" class="btn-primary">Approve</button>
     </div>
-  </div>
+  </section>
 
-  </div> <!-- end container -->
-  <script src="/setup/app.js"></script>
+  </main>
+</div>
+<script src="/setup/app.js"></script>
 </body>
 </html>`);
 });
@@ -1454,40 +1500,15 @@ function redactSecrets(text) {
       (_, key) => `"${key}": "[REDACTED]"`);
 }
 
-const ALLOWED_CONSOLE_COMMANDS = new Set([
-  // Wrapper-managed lifecycle
-  "gateway.restart",
-  "gateway.stop",
-  "gateway.start",
-
-  // OpenClaw CLI helpers (read-only)
-  "openclaw.version",
-  "openclaw.status",
-  "openclaw.health",
-  "openclaw.doctor",
-  "openclaw.channels.status",
-  "openclaw.channels.list",
-  "openclaw.channels.logs",
-  "openclaw.logs",
-  "openclaw.config.get",
-
-  // Write operations
-  "openclaw.config.set",
-  "openclaw.config.set.json",
-  "openclaw.plugins.list",
-  "openclaw.plugins.enable",
-  "openclaw.plugins.disable",
-  "openclaw.pairing.list",
-  "openclaw.pairing.approve",
-]);
+// Any openclaw.* or gateway.* command is accepted and dynamically mapped to CLI args.
 
 app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
   const payload = req.body || {};
   const cmd = String(payload.cmd || "").trim();
   const arg = String(payload.arg || "").trim();
 
-  if (!ALLOWED_CONSOLE_COMMANDS.has(cmd)) {
-    return res.status(400).json({ ok: false, error: "Command not allowed" });
+  if (!cmd.startsWith("gateway.") && !cmd.startsWith("openclaw.")) {
+    return res.status(400).json({ ok: false, error: `Unknown command prefix: ${cmd}. Use openclaw.* or gateway.*` });
   }
 
   try {
@@ -1508,93 +1529,37 @@ app.post("/setup/api/console/run", requireSetupAuth, async (req, res) => {
       return res.json({ ok: Boolean(r.ok), output: r.ok ? "Gateway started.\n" : `Gateway not started: ${r.reason}\n` });
     }
 
-    if (cmd === "openclaw.version") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.status") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["status"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.health") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["health"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.doctor") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["doctor"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.channels.status") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "status"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.channels.logs") {
-      const channel = arg || "all";
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "logs", "--channel", channel, "--lines", "300"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.logs") {
-      const limit = Math.max(50, Math.min(1000, Number.parseInt(arg || "200", 10) || 200));
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["logs", "--limit", String(limit)]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.config.get") {
-      if (!arg) return res.status(400).json({ ok: false, error: "Missing config path" });
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", arg]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.config.set") {
-      // arg format: "<path> <value>" - split on first space
-      const spaceIdx = arg.indexOf(" ");
-      if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: config.set <path> <value>" });
-      const cfgPath = arg.slice(0, spaceIdx);
-      const cfgVal = arg.slice(spaceIdx + 1);
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", cfgPath, cfgVal]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Set ${cfgPath}\n` });
-    }
-    if (cmd === "openclaw.config.set.json") {
-      // arg format: "<path> <json>" - split on first space
-      const spaceIdx = arg.indexOf(" ");
-      if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: config.set.json <path> <json>" });
-      const cfgPath = arg.slice(0, spaceIdx);
-      const cfgVal = arg.slice(spaceIdx + 1);
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", cfgPath, cfgVal]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Set ${cfgPath} (JSON)\n` });
-    }
-    if (cmd === "openclaw.plugins.list") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "list"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.plugins.enable") {
-      if (!arg) return res.status(400).json({ ok: false, error: "Usage: plugins.enable <name>" });
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", arg]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Enabled plugin: ${arg}\n` });
-    }
-    if (cmd === "openclaw.plugins.disable") {
-      if (!arg) return res.status(400).json({ ok: false, error: "Usage: plugins.disable <name>" });
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "disable", arg]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Disabled plugin: ${arg}\n` });
-    }
-    if (cmd === "openclaw.channels.list") {
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["channels", "list"]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.pairing.list") {
-      if (!arg) return res.status(400).json({ ok: false, error: "Usage: pairing.list <channel> (e.g. discord, telegram, web, feishu)" });
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "list", arg]));
-      return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
-    }
-    if (cmd === "openclaw.pairing.approve") {
-      // arg format: "<channel> <code>"
-      const spaceIdx = arg.indexOf(" ");
-      if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: pairing.approve <channel> <code>" });
-      const channel = arg.slice(0, spaceIdx);
-      const code = arg.slice(spaceIdx + 1).trim();
-      const r = await runCmd(OPENCLAW_NODE, clawArgs(["pairing", "approve", channel, code]));
+    // Dynamic openclaw.* → CLI mapping
+    // "openclaw.version"           → openclaw --version
+    // "openclaw.config.set.json x" → openclaw config set --json x
+    // "openclaw.devices.list"      → openclaw devices list
+    if (cmd.startsWith("openclaw.")) {
+      const sub = cmd.slice("openclaw.".length);
+
+      // Special: version → --version
+      if (sub === "version") {
+        const r = await runCmd(OPENCLAW_NODE, clawArgs(["--version"]));
+        return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
+      }
+
+      // Special: config.set.json → config set --json <path> <json>
+      if (sub === "config.set.json") {
+        const spaceIdx = arg.indexOf(" ");
+        if (!arg || spaceIdx < 1) return res.status(400).json({ ok: false, error: "Usage: config.set.json <path> <json>" });
+        const cfgPath = arg.slice(0, spaceIdx);
+        const cfgVal = arg.slice(spaceIdx + 1);
+        const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", cfgPath, cfgVal]));
+        return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) || `Set ${cfgPath} (JSON)\n` });
+      }
+
+      // Generic: split dots into CLI subcommands, append arg tokens
+      const cliArgs = sub.split(".");
+      if (arg) cliArgs.push(...arg.split(/\s+/));
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(cliArgs));
       return res.status(r.code === 0 ? 200 : 500).json({ ok: r.code === 0, output: redactSecrets(r.output) });
     }
 
-    return res.status(400).json({ ok: false, error: "Unhandled command" });
+    return res.status(400).json({ ok: false, error: `Unknown command: ${cmd}` });
   } catch (err) {
     return res.status(500).json({ ok: false, error: String(err) });
   }
