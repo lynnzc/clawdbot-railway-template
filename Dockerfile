@@ -50,7 +50,14 @@ ENV NODE_ENV=production
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
+    # Chromium for built-in browser tool + agent-browser skill
+    chromium \
+    fonts-liberation fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
+# Tell Playwright/agent-browser to use system Chromium instead of downloading their own.
+ENV CHROME_PATH=/usr/bin/chromium
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
@@ -58,12 +65,18 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
+# Pre-install skill CLI tools (system Chromium is used via CHROME_PATH)
+RUN npm install -g agent-browser
+
 # Copy built openclaw
 COPY --from=openclaw-build /openclaw /openclaw
 
 # Provide an openclaw executable
 RUN printf '%s\n' '#!/usr/bin/env bash' 'exec node /openclaw/dist/entry.js "$@"' > /usr/local/bin/openclaw \
   && chmod +x /usr/local/bin/openclaw
+
+# Bundled skills (copied to managed dir on startup)
+COPY skills /app/skills
 
 COPY src ./src
 

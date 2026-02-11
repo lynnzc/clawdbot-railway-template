@@ -163,6 +163,8 @@ async function waitForGatewayReady(opts = {}) {
   return false;
 }
 
+const BUNDLED_SKILLS_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "skills");
+
 async function startGateway() {
   if (gatewayProc) return;
   if (!isConfigured()) throw new Error("Gateway cannot start: not configured");
@@ -180,9 +182,22 @@ async function startGateway() {
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.bind", "loopback"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "gateway.port", String(INTERNAL_GATEWAY_PORT)]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "agents.defaults.timeoutSeconds", "600"]));
-    image.png    // Skip device pairing for Control UI — the wrapper proxy handles auth via SETUP_PASSWORD.
+    // Skip device pairing for Control UI — the wrapper proxy handles auth via SETUP_PASSWORD.
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set.json", "gateway.controlUi.allowInsecureAuth", "true"]));
     await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "gateway.trustedProxies", '["127.0.0.1"]']));
+    // Register bundled skills dir so OpenClaw loads them natively.
+    if (fs.existsSync(BUNDLED_SKILLS_DIR)) {
+      await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "skills.load.extraDirs", JSON.stringify([BUNDLED_SKILLS_DIR])]));
+    }
+    // Exec: allow commands in the container (the container IS the sandbox).
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "tools.exec", JSON.stringify({ host: "sandbox", security: "full" })]));
+    // Browser: headless + noSandbox for Docker, use managed profile + system Chromium.
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "browser", JSON.stringify({
+      enabled: true, headless: true, noSandbox: true, defaultProfile: "openclaw",
+      executablePath: process.env.CHROME_PATH || "/usr/bin/chromium",
+    })]));
+    // Enable llm-task plugin.
+    await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "plugins.entries.llm-task", JSON.stringify({ enabled: true })]));
   } catch (err) {
     console.error("[wrapper] failed to sync gateway config:", err);
   }
@@ -1443,6 +1458,38 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       const webEnable = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "web"]));
       extra += `\n[web config] exit=${webSet.code}\n${webSet.output || "(no output)"}`;
       extra += `\n[web plugin] exit=${webEnable.code}\n${webEnable.output || "(no output)"}`;
+    }
+
+    // Register bundled skills (agent-browser, etc.) so they're available immediately.
+    if (fs.existsSync(BUNDLED_SKILLS_DIR)) {
+      const skillsSet = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "--json", "skills.load.extraDirs", JSON.stringify([BUNDLED_SKILLS_DIR])]),
+      );
+      extra += `\n[bundled skills] extraDirs=${BUNDLED_SKILLS_DIR}, exit=${skillsSet.code}\n${skillsSet.output || "(no output)"}`;
+    }
+
+    // Enable exec (security: full — the container is the sandbox).
+    {
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "tools.exec", JSON.stringify({ host: "sandbox", security: "full" })]));
+      extra += `\n[exec tools] exit=${r.code}\n${r.output || "(no output)"}`;
+    }
+
+    // Browser: headless + noSandbox for Docker, use managed "openclaw" profile + system Chromium.
+    {
+      const browserCfg = {
+        enabled: true, headless: true, noSandbox: true, defaultProfile: "openclaw",
+        executablePath: process.env.CHROME_PATH || "/usr/bin/chromium",
+      };
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "browser", JSON.stringify(browserCfg)]));
+      extra += `\n[browser] exit=${r.code}\n${r.output || "(no output)"}`;
+    }
+
+    // Enable llm-task plugin.
+    {
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "--json", "plugins.entries.llm-task", JSON.stringify({ enabled: true })]));
+      const e = await runCmd(OPENCLAW_NODE, clawArgs(["plugins", "enable", "llm-task"]));
+      extra += `\n[llm-task plugin] config=${r.code}, enable=${e.code}\n${e.output || "(no output)"}`;
     }
 
     // Apply changes immediately.
