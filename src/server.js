@@ -291,7 +291,7 @@ app.disable("x-powered-by");
 
 // Feishu/Lark webhook: proxy BEFORE body parsing so the raw request stream
 // reaches the feishu plugin's HTTP server intact (needed for Lark challenge verification).
-const feishuProxy = httpProxy.createProxyServer({ target: FEISHU_WEBHOOK_TARGET, xfwd: true });
+const feishuProxy = httpProxy.createProxyServer({ target: FEISHU_WEBHOOK_TARGET, xfwd: true, proxyTimeout: 660_000, timeout: 660_000 });
 feishuProxy.on("error", (err, _req, _res) => {
   console.error("[feishu-proxy]", err);
 });
@@ -1773,6 +1773,8 @@ const proxy = httpProxy.createProxyServer({
   target: GATEWAY_TARGET,
   ws: true,
   xfwd: true,
+  proxyTimeout: 660_000,
+  timeout: 660_000,
 });
 
 proxy.on("error", (err, _req, _res) => {
