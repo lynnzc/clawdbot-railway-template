@@ -652,6 +652,110 @@
     };
   }
 
+  // --- Web Search UI ---
+  var wsProviderEl = document.getElementById('webSearchProvider');
+  var wsBraveFields = document.getElementById('webSearchBraveFields');
+  var wsPerplexityFields = document.getElementById('webSearchPerplexityFields');
+  var wsPerplexityDirectFields = document.getElementById('webSearchPerplexityDirectFields');
+  var wsSaveBtn = document.getElementById('webSearchSave');
+  var wsDisableBtn = document.getElementById('webSearchDisable');
+  var wsOutEl = document.getElementById('webSearchOut');
+
+  function updateWebSearchFields() {
+    if (!wsProviderEl) return;
+    var v = wsProviderEl.value;
+    if (wsBraveFields) wsBraveFields.style.display = v === 'brave' ? 'block' : 'none';
+    if (wsPerplexityFields) wsPerplexityFields.style.display = v === 'perplexity' ? 'block' : 'none';
+    if (wsPerplexityDirectFields) wsPerplexityDirectFields.style.display = v === 'perplexity-direct' ? 'block' : 'none';
+  }
+
+  if (wsProviderEl) {
+    wsProviderEl.onchange = updateWebSearchFields;
+    updateWebSearchFields();
+  }
+
+  function loadWebSearchStatus() {
+    if (!wsOutEl) return;
+    httpJson('/setup/api/websearch').then(function (j) {
+      if (j.config && j.config.enabled !== false) {
+        var provider = j.config.provider || 'unknown';
+        var model = (j.config.perplexity && j.config.perplexity.model) || '';
+        var info = 'Current: ' + provider;
+        if (model) info += ' (' + model + ')';
+        wsOutEl.textContent = info;
+      } else {
+        wsOutEl.textContent = '';
+      }
+    }).catch(function () { /* ignore */ });
+  }
+
+  // Auto-suggest Perplexity when OpenRouter is selected
+  if (authGroupEl && wsProviderEl) {
+    var origAuthChange = authGroupEl.onchange;
+    authGroupEl.onchange = function () {
+      if (origAuthChange) origAuthChange.call(this);
+      if (authGroupEl.value === 'openrouter' && wsProviderEl.value === '') {
+        wsProviderEl.value = 'perplexity';
+        updateWebSearchFields();
+        if (wsOutEl) wsOutEl.textContent = 'Tip: OpenRouter detected — Perplexity Sonar auto-selected (uses your OpenRouter key).';
+      }
+    };
+  }
+
+  if (wsSaveBtn) {
+    wsSaveBtn.onclick = function () {
+      var provider = wsProviderEl ? wsProviderEl.value : '';
+      if (!provider) {
+        if (wsOutEl) wsOutEl.textContent = 'Select a provider first.';
+        return;
+      }
+      var payload = { provider: provider };
+      if (provider === 'brave') {
+        var k = document.getElementById('webSearchBraveKey');
+        payload.braveKey = k ? k.value.trim() : '';
+      } else if (provider === 'perplexity') {
+        var m = document.getElementById('webSearchPerplexityModel');
+        payload.model = m ? m.value : 'perplexity/sonar-pro';
+      } else if (provider === 'perplexity-direct') {
+        var pk = document.getElementById('webSearchPerplexityKey');
+        var pm = document.getElementById('webSearchPerplexityDirectModel');
+        payload.perplexityKey = pk ? pk.value.trim() : '';
+        payload.model = pm ? pm.value : 'perplexity/sonar-pro';
+      }
+
+      if (wsOutEl) wsOutEl.textContent = 'Saving...';
+      httpJson('/setup/api/websearch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (j) {
+        if (wsOutEl) wsOutEl.textContent = j.ok ? 'Saved. Gateway restarting...' : (j.output || 'Error');
+        setTimeout(loadWebSearchStatus, 3000);
+      }).catch(function (e) {
+        if (wsOutEl) wsOutEl.textContent = 'Error: ' + String(e);
+      });
+    };
+  }
+
+  if (wsDisableBtn) {
+    wsDisableBtn.onclick = function () {
+      if (wsOutEl) wsOutEl.textContent = 'Disabling...';
+      httpJson('/setup/api/websearch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: '' })
+      }).then(function (j) {
+        if (wsOutEl) wsOutEl.textContent = j.ok ? 'Disabled.' : (j.output || 'Error');
+        if (wsProviderEl) wsProviderEl.value = '';
+        updateWebSearchFields();
+      }).catch(function (e) {
+        if (wsOutEl) wsOutEl.textContent = 'Error: ' + String(e);
+      });
+    };
+  }
+
+  loadWebSearchStatus();
+
   document.getElementById('reset').onclick = function () {
     if (!confirm('Reset setup? This deletes the config file so onboarding can run again.')) return;
     logEl.textContent = 'Resetting...\n';

@@ -97,6 +97,18 @@ const GATEWAY_TARGET = `http://${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}
 const FEISHU_WEBHOOK_PORT = Number.parseInt(process.env.FEISHU_WEBHOOK_PORT ?? "3000", 10);
 const FEISHU_WEBHOOK_TARGET = `http://127.0.0.1:${FEISHU_WEBHOOK_PORT}`;
 
+// Env vars that only the wrapper needs — strip before spawning gateway/exec
+// so the agent's shell environment does not expose them.
+const WRAPPER_ONLY_ENV_KEYS = [
+  "SETUP_PASSWORD",
+];
+
+function gatewayEnv() {
+  const env = { ...process.env };
+  for (const key of WRAPPER_ONLY_ENV_KEYS) delete env[key];
+  return env;
+}
+
 // Always run the built-from-source CLI entry directly to avoid PATH/global-install mismatches.
 const OPENCLAW_ENTRY = process.env.OPENCLAW_ENTRY?.trim() || "/openclaw/dist/entry.js";
 const OPENCLAW_NODE = process.env.OPENCLAW_NODE?.trim() || "node";
@@ -210,7 +222,7 @@ async function startGateway() {
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
     stdio: "inherit",
     env: {
-      ...process.env,
+      ...gatewayEnv(),
       OPENCLAW_STATE_DIR: STATE_DIR,
       OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
     },
@@ -754,6 +766,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <a href="#" data-nav="terminal">Terminal</a>
       <a href="#" data-nav="config">Config</a>
       <a href="#" data-nav="provider">Provider</a>
+      <a href="#" data-nav="websearch">Web Search</a>
       <a href="#" data-nav="channels">Channels</a>
       <a href="#" data-nav="setup">Setup</a>
       <a href="#" data-nav="pairing">Pairing</a>
@@ -911,6 +924,61 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
         Format: <code>provider/model-name</code>. Custom input overrides dropdown. Leave blank for provider default.
       </div>
     </div>
+  </section>
+
+  <!-- Web Search -->
+  <section class="section" data-section="websearch">
+    <h2 class="section-title">Web Search</h2>
+    <p class="section-desc">Enable web search so the agent can look up real-time information. Keys are stored in config, not environment variables.</p>
+
+    <label>Search Provider</label>
+    <select id="webSearchProvider">
+      <option value="">Disabled</option>
+      <option value="brave">Brave Search</option>
+      <option value="perplexity">Perplexity Sonar (via OpenRouter)</option>
+      <option value="perplexity-direct">Perplexity Sonar (direct API)</option>
+    </select>
+
+    <div id="webSearchBraveFields" style="display:none; margin-top:1rem; padding:1rem; border:1px solid #eee; border-radius:4px; background:#fafafa;">
+      <label style="margin-top:0">Brave API Key</label>
+      <input id="webSearchBraveKey" type="password" placeholder="BSA..." />
+      <div class="muted" style="margin-top:0.25rem">
+        Get a free key (2,000 req/month) at
+        <a href="https://brave.com/search/api/" target="_blank">brave.com/search/api</a>.
+        Choose the <strong>Data for Search</strong> plan (not "Data for AI").
+      </div>
+    </div>
+
+    <div id="webSearchPerplexityFields" style="display:none; margin-top:1rem; padding:1rem; border:1px solid #eee; border-radius:4px; background:#fafafa;">
+      <div class="muted">
+        Uses your <strong>OpenRouter API key</strong> from the Provider tab.
+        No extra key needed &mdash; Perplexity Sonar calls are billed to your OpenRouter account (~$5/1K queries).
+      </div>
+      <label style="margin-top:0.75rem">Model</label>
+      <select id="webSearchPerplexityModel">
+        <option value="perplexity/sonar-pro">Sonar Pro (recommended, multi-step reasoning)</option>
+        <option value="perplexity/sonar">Sonar (faster, cheaper)</option>
+      </select>
+    </div>
+
+    <div id="webSearchPerplexityDirectFields" style="display:none; margin-top:1rem; padding:1rem; border:1px solid #eee; border-radius:4px; background:#fafafa;">
+      <label style="margin-top:0">Perplexity API Key</label>
+      <input id="webSearchPerplexityKey" type="password" placeholder="pplx-..." />
+      <div class="muted" style="margin-top:0.25rem">
+        Get a key at <a href="https://www.perplexity.ai/settings/api" target="_blank">perplexity.ai/settings/api</a>.
+      </div>
+      <label style="margin-top:0.75rem">Model</label>
+      <select id="webSearchPerplexityDirectModel">
+        <option value="perplexity/sonar-pro">Sonar Pro</option>
+        <option value="perplexity/sonar">Sonar</option>
+      </select>
+    </div>
+
+    <div style="margin-top:1rem;">
+      <button id="webSearchSave" class="btn-primary">Save Web Search Config</button>
+      <button id="webSearchDisable" class="btn-danger" style="margin-left:0.5rem;">Disable</button>
+    </div>
+    <pre id="webSearchOut" style="white-space:pre-wrap; margin-top:0.5rem;"></pre>
   </section>
 
   <!-- Channels -->
@@ -1204,7 +1272,7 @@ function runCmd(cmd, args, opts = {}) {
     const proc = childProcess.spawn(cmd, args, {
       ...opts,
       env: {
-        ...process.env,
+        ...gatewayEnv(),
         OPENCLAW_STATE_DIR: STATE_DIR,
         OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
       },
@@ -1503,6 +1571,78 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   } catch (err) {
     console.error("[/setup/api/run] error:", err);
     return res.status(500).json({ ok: false, output: `Internal error: ${String(err)}` });
+  }
+});
+
+// --- Web Search config ---
+
+app.post("/setup/api/websearch", requireSetupAuth, async (req, res) => {
+  try {
+    const { provider, braveKey, perplexityKey, model } = req.body || {};
+    let output = "";
+
+    if (!provider) {
+      // Disable web search
+      const r = await runCmd(OPENCLAW_NODE, clawArgs([
+        "config", "set", "--json", "tools.web.search",
+        JSON.stringify({ enabled: false }),
+      ]));
+      output += `[web search] disabled, exit=${r.code}\n${r.output || ""}`;
+    } else if (provider === "brave") {
+      if (!braveKey) return res.status(400).json({ ok: false, output: "Brave API key is required." });
+      const cfg = { enabled: true, provider: "brave", apiKey: braveKey };
+      const r = await runCmd(OPENCLAW_NODE, clawArgs([
+        "config", "set", "--json", "tools.web.search", JSON.stringify(cfg),
+      ]));
+      output += `[web search] brave configured, exit=${r.code}\n${r.output || ""}`;
+    } else if (provider === "perplexity") {
+      const cfg = {
+        enabled: true,
+        provider: "perplexity",
+        perplexity: {
+          baseUrl: "https://openrouter.ai/api/v1",
+          model: model || "perplexity/sonar-pro",
+        },
+      };
+      const r = await runCmd(OPENCLAW_NODE, clawArgs([
+        "config", "set", "--json", "tools.web.search", JSON.stringify(cfg),
+      ]));
+      output += `[web search] perplexity via openrouter, exit=${r.code}\n${r.output || ""}`;
+    } else if (provider === "perplexity-direct") {
+      if (!perplexityKey) return res.status(400).json({ ok: false, output: "Perplexity API key is required." });
+      const cfg = {
+        enabled: true,
+        provider: "perplexity",
+        perplexity: {
+          apiKey: perplexityKey,
+          baseUrl: "https://api.perplexity.ai",
+          model: model || "perplexity/sonar-pro",
+        },
+      };
+      const r = await runCmd(OPENCLAW_NODE, clawArgs([
+        "config", "set", "--json", "tools.web.search", JSON.stringify(cfg),
+      ]));
+      output += `[web search] perplexity direct, exit=${r.code}\n${r.output || ""}`;
+    } else {
+      return res.status(400).json({ ok: false, output: `Unknown provider: ${provider}` });
+    }
+
+    if (isConfigured()) await restartGateway();
+    res.json({ ok: true, output: redactSecrets(output) });
+  } catch (err) {
+    console.error("[/setup/api/websearch] error:", err);
+    res.status(500).json({ ok: false, output: `Internal error: ${String(err)}` });
+  }
+});
+
+app.get("/setup/api/websearch", requireSetupAuth, async (_req, res) => {
+  try {
+    const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "tools.web.search"]));
+    let config = null;
+    try { config = JSON.parse(r.output.trim()); } catch { /* not configured */ }
+    res.json({ ok: true, config });
+  } catch (err) {
+    res.status(500).json({ ok: false, config: null });
   }
 });
 
