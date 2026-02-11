@@ -552,6 +552,10 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       overflow-x: auto;
       font-size: 0.8125rem;
       line-height: 1.6;
+      margin: 0.5rem 0 0;
+    }
+    pre:empty {
+      display: none;
     }
     .channel-tabs {
       display: flex;
@@ -1038,7 +1042,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       </select>
       <button id="pairingList">List Pending</button>
     </div>
-    <pre id="pairingOut" style="white-space:pre-wrap; margin-top:0.75rem; min-height:2rem;"></pre>
+    <pre id="pairingOut" style="white-space:pre-wrap;"></pre>
     <div class="field-row">
       <input id="pairingCode" placeholder="Pairing code (e.g. 3EY4PUYS)" style="max-width:260px;" />
       <button id="pairingApprove" class="btn-primary">Approve</button>
