@@ -816,7 +816,7 @@ app.get("/setup", requireSetupAuth, (_req, res) => {
       <button data-cmd="openclaw.channels.status">Channels</button>
       <button data-cmd="openclaw.plugins.list">Plugins</button>
       <button data-cmd="openclaw.pairing.list" data-needs-arg="channel (discord, telegram, web, feishu)">Pairing</button>
-      <button data-cmd="openclaw.logs" data-arg="200">Logs</button>
+      <button data-cmd="openclaw.logs" data-arg="--limit 20">Logs</button>
       <button data-cmd="openclaw.config.get" data-needs-arg="config path">Config Get</button>
       <button data-cmd="openclaw.config.set" data-needs-arg="path value">Config Set</button>
       <button data-cmd="openclaw.plugins.enable" data-needs-arg="plugin name">Enable Plugin</button>
@@ -1267,6 +1267,17 @@ function buildOnboardArgs(payload) {
   return args;
 }
 
+// Map auth group to the provider prefix that OpenClaw's parseModelRef expects.
+// e.g. "openrouter" → model value must be "openrouter/vendor/model-name".
+function resolveModelProviderPrefix(authGroup) {
+  const map = {
+    openrouter: "openrouter",
+    "ai-gateway": "ai-gateway",
+    "opencode-zen": "opencode",
+  };
+  return map[authGroup] || "";
+}
+
 function runCmd(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     const proc = childProcess.spawn(cmd, args, {
@@ -1294,8 +1305,33 @@ function runCmd(cmd, args, opts = {}) {
 app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   try {
     if (isConfigured()) {
-      await ensureGatewayRunning();
-      return res.json({ ok: true, output: "Already configured.\nUse Reset setup if you want to rerun onboarding.\n" });
+      const payload = req.body || {};
+      let extra = "";
+      let changed = false;
+
+      // Apply model changes even when already configured.
+      if (payload.model?.trim()) {
+        let m = payload.model.trim();
+        const providerPrefix = resolveModelProviderPrefix(payload.authGroup);
+        if (providerPrefix && !m.startsWith(providerPrefix + "/")) {
+          m = providerPrefix + "/" + m;
+        }
+        const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "agents.defaults.model", m]));
+        extra += `[model config] Set agents.defaults.model=${m} (exit=${r.code})\n`;
+        if (r.code === 0) changed = true;
+      }
+
+      if (changed) {
+        await restartGateway();
+        extra += "Gateway restarted with new model.\n";
+      } else {
+        await ensureGatewayRunning();
+      }
+
+      const msg = changed
+        ? extra
+        : "Already configured.\nUse Reset setup if you want to rerun onboarding.\n";
+      return res.json({ ok: true, output: msg });
     }
 
   fs.mkdirSync(STATE_DIR, { recursive: true });
@@ -1489,31 +1525,19 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       }
     }
 
-    // Model configuration (for OpenRouter / multi-model providers)
-    // Try known config paths in order; first success wins.
+    // Model configuration
+    // OpenClaw reads from agents.defaults.model (string or {primary, fallbacks}).
+    // The value format is "provider/model-id". For OpenRouter, the value must
+    // be "openrouter/vendor/model" so parseModelRef resolves provider=openrouter.
     if (payload.model?.trim()) {
-      const m = payload.model.trim();
-      const modelPaths = [
-        "primaryProvider.largeModel",
-        "primaryProvider.smallModel",
-        "largeModel",
-        "smallModel",
-        "primaryProvider.model",
-        "provider.largeModel",
-        "provider.smallModel",
-      ];
-      let modelSet = false;
-      for (const p of modelPaths) {
-        const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", p, m]));
-        if (r.code === 0) {
-          extra += `\n[model config] Set ${p}=${m}`;
-          modelSet = true;
-        }
+      let m = payload.model.trim();
+      const providerPrefix = resolveModelProviderPrefix(payload.authGroup);
+      if (providerPrefix && !m.startsWith(providerPrefix + "/")) {
+        m = providerPrefix + "/" + m;
       }
-      if (!modelSet) {
-        extra += `\n[model config] Could not auto-detect model config path. Set it manually in Config Editor.`;
-        extra += `\n  Open the config, find model-related keys, and change them to: ${m}`;
-      }
+      const r = await runCmd(OPENCLAW_NODE, clawArgs(["config", "set", "agents.defaults.model", m]));
+      extra += `\n[model config] Set agents.defaults.model=${m} (exit=${r.code})`;
+      if (r.output?.trim()) extra += `\n${r.output.trim()}`;
     }
 
     // Enable the web channel if this build supports it.
@@ -1596,10 +1620,27 @@ app.post("/setup/api/websearch", requireSetupAuth, async (req, res) => {
       ]));
       output += `[web search] brave configured, exit=${r.code}\n${r.output || ""}`;
     } else if (provider === "perplexity") {
+      // "Via OpenRouter" needs the OpenRouter API key passed explicitly —
+      // the web-search module doesn't inherit the provider key automatically.
+      let orApiKey = (process.env.OPENROUTER_API_KEY || "").trim();
+      if (!orApiKey) {
+        try {
+          const raw = fs.readFileSync(configPath(), "utf8");
+          const m = raw.match(/"(sk-or-[A-Za-z0-9_-]{20,})"/);
+          if (m) orApiKey = m[1];
+        } catch {}
+      }
+      if (!orApiKey) {
+        return res.status(400).json({
+          ok: false,
+          output: "Could not find your OpenRouter API key in the config. Use 'Perplexity Sonar (direct API)' with a Perplexity key instead, or set OPENROUTER_API_KEY as an env var.",
+        });
+      }
       const cfg = {
         enabled: true,
         provider: "perplexity",
         perplexity: {
+          apiKey: orApiKey,
           baseUrl: "https://openrouter.ai/api/v1",
           model: model || "perplexity/sonar-pro",
         },

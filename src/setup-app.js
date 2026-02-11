@@ -489,6 +489,7 @@
 
     var payload = {
       flow: document.getElementById('flow').value,
+      authGroup: authGroupEl.value,
       authChoice: authChoiceEl.value,
       authSecret: document.getElementById('authSecret').value,
       model: modelVal,
