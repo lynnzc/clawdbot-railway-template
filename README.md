@@ -10,29 +10,70 @@ This repo packages **[OpenClaw](https://github.com/openclaw/openclaw)** for Rail
 
 - **OpenClaw Gateway + Control UI** (served at `/` and `/openclaw`)
 - **Modern Setup Wizard** at `/setup` (password-protected, beautiful UI)
+- **7 Messaging Channels** — Telegram, Discord, Slack, WhatsApp, Feishu/Lark, WeCom, Web
+- **12+ AI Providers** — Anthropic, OpenAI, Gemini, OpenRouter, Moonshot, Venice AI, and more
+- **Web Search** — Brave Search, Perplexity (direct or via OpenRouter)
 - **Persistent Storage** via Railway Volume (config/credentials/memory survive redeploys)
-- **Backup & Restore** - One-click export/import for easy migration
-- **Debug Console** - Run diagnostics and view logs from the browser
-- **Config Editor** - Edit your OpenClaw config with live reload
-- **Auto-start Gateway** - Wrapper manages the gateway lifecycle automatically
+- **Backup & Restore** — One-click export/import for easy migration
+- **Debug Console** — Run diagnostics, view logs, restart gateway from the browser
+- **Config Editor** — Edit OpenClaw config with auto-backup and live reload
+- **Built-in Terminal** — Run OpenClaw CLI commands with autocomplete and history
+- **Pairing UI** — Approve DM pairing codes for all channels
+- **Bundled Skills** — `agent-browser` (headless Chromium) pre-installed
+- **Auto-start Gateway** — Wrapper manages the gateway lifecycle automatically
+
+## Supported channels
+
+| Channel | How it connects | Notes |
+|---------|----------------|-------|
+| **Telegram** | Bot token from @BotFather | DM pairing support |
+| **Discord** | Bot token from Developer Portal | Requires MESSAGE CONTENT INTENT |
+| **Slack** | Bot token (`xoxb-`) + App token (`xapp-`) | |
+| **WhatsApp** | QR code pairing | No token needed; credentials stored on volume |
+| **Feishu / Lark** | App ID + App Secret | WebSocket or Webhook mode; webhook proxy at `/feishu/events` |
+| **WeCom** | Corp ID, Agent ID, Token, EncodingAESKey, Secret | |
+| **Web** | Auto-enabled after onboarding | Built-in web chat UI |
+
+## Supported AI providers
+
+| Provider | Auth | Notes |
+|----------|------|-------|
+| **Anthropic** | API key | Claude Opus 4.6 and family |
+| **OpenAI** | API key / ChatGPT Codex OAuth | GPT-5.2 and family |
+| **Google Gemini** | API key | Gemini 3 Pro, free tier available |
+| **OpenRouter** | API key | Access multiple models with one key; free models available |
+| **Moonshot AI** | API key | Global, China, and Kimi Code endpoints |
+| **Venice AI** | API key | |
+| **Vercel AI Gateway** | API key | |
+| **Z.AI** | API key | |
+| **MiniMax** | API key | M2.1, M2.1 Lightning |
+| **Synthetic** | API key | |
+| **OpenCode Zen** | API key | |
+| **Chutes** | Browser-based auth | |
 
 ## What's new in this version
 
 - Updated to OpenClaw 2026.2.6+ with latest auth providers
+- **6 new channels** — Slack, WhatsApp, Feishu/Lark, WeCom, and auto-enabled Web chat
+- **Web search** — Brave Search, Perplexity integration
+- **Pairing UI** — Approve DM access for Telegram, Discord, Web, Feishu, Slack
+- **Built-in terminal** with autocomplete and command history (last 50 commands)
+- **Agent browser skill** bundled for headless browser automation
+- **Config auto-backup** — Timestamped `.bak` created before each save
 - Modern, gradient UI with improved UX
 - Better error handling and stability
 - Enhanced health monitoring
-- Support for new providers: Venice AI, Moonshot (CN), and more
+- New providers: Venice AI, Moonshot (CN), MiniMax, Z.AI, OpenCode Zen, Chutes
 
 ## How it works
 
-1. **Container runs a wrapper server** - Manages OpenClaw lifecycle and provides the setup UI
-2. **Setup wizard** - Protected by `SETUP_PASSWORD`, runs `openclaw onboard` non-interactively
-3. **Gateway management** - Automatically starts/restarts the OpenClaw gateway
-4. **Reverse proxy** - All traffic (including WebSockets) is proxied to the gateway
-5. **Persistent volumes** - Your data survives redeploys via Railway's volume system
+1. **Container runs a wrapper server** — Manages OpenClaw lifecycle and provides the setup UI
+2. **Setup wizard** — Protected by `SETUP_PASSWORD`, runs `openclaw onboard` non-interactively
+3. **Gateway management** — Automatically starts/restarts the OpenClaw gateway
+4. **Reverse proxy** — All traffic (including WebSockets) is proxied to the gateway
+5. **Persistent volumes** — Your data survives redeploys via Railway's volume system
 
-## Railway deploy instructions (what you’ll publish as a Template)
+## Railway deploy instructions (what you'll publish as a Template)
 
 In Railway Template Composer:
 
@@ -65,7 +106,7 @@ Then:
 - Complete setup
 - Visit `https://<your-app>.up.railway.app/` and `/openclaw`
 
-## Getting chat tokens (so you don’t have to scramble)
+## Getting chat tokens (so you don't have to scramble)
 
 ### Telegram bot token
 1) Open Telegram and message **@BotFather**
@@ -79,6 +120,25 @@ Then:
 3) Open the **Bot** tab → **Add Bot**
 4) Copy the **Bot Token** and paste it into `/setup`
 5) Invite the bot to your server (OAuth2 URL Generator → scopes: `bot`, `applications.commands`; then choose permissions)
+
+### Slack bot tokens
+1) Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
+2) Under **OAuth & Permissions**, install the app to your workspace and copy the **Bot Token** (`xoxb-...`)
+3) Under **Socket Mode**, enable it and generate an **App-Level Token** (`xapp-...`)
+4) Paste both tokens into `/setup`
+
+### WhatsApp
+No token needed — `/setup` will show a QR code for you to scan with the WhatsApp app on your phone.
+
+### Feishu / Lark
+1) Create an app at [open.feishu.cn](https://open.feishu.cn) (Feishu) or [open.larksuite.com](https://open.larksuite.com) (Lark)
+2) Copy **App ID** and **App Secret**
+3) Choose WebSocket (recommended) or Webhook mode in `/setup`
+
+### WeCom
+1) Go to [work.weixin.qq.com](https://work.weixin.qq.com) and create a self-built app
+2) Collect Corp ID, Agent ID, Token, EncodingAESKey, and Secret
+3) Paste them into `/setup`
 
 ## Local smoke test
 
@@ -101,25 +161,23 @@ docker run --rm -p 8080:8080 \
 ### Which auth provider should I choose?
 
 **For most users:**
-- **Anthropic (Recommended)** - Best reliability, uses Claude. Get an API key from [console.anthropic.com](https://console.anthropic.com)
-- **OpenAI** - Great alternative, uses GPT-4. Get an API key from [platform.openai.com](https://platform.openai.com)
+- **Anthropic (Recommended)** — Best reliability, uses Claude. Get an API key from [console.anthropic.com](https://console.anthropic.com)
+- **OpenAI** — Great alternative, uses GPT-5.2. Get an API key from [platform.openai.com](https://platform.openai.com)
 
 **For advanced users:**
-- **OpenRouter** - Access multiple AI models with one API key
-- **Gemini** - Google's AI models, free tier available
+- **OpenRouter** — Access multiple AI models with one API key; has free model options
+- **Gemini** — Google's AI models, free tier available
+- **Moonshot AI** — Available for both global and China endpoints
 
-### How do I get messaging bot tokens?
+### Which messaging channel should I use?
 
-**Telegram:**
-1. Open Telegram and message [@BotFather](https://t.me/BotFather)
-2. Send `/newbot` and follow prompts
-3. Copy the token (format: `123456789:ABC...`)
-
-**Discord:**
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create New Application → Bot tab → Add Bot
-3. Copy Bot Token
-4. **Important:** Enable MESSAGE CONTENT INTENT in Bot settings
+- **Telegram** — Easiest to set up, great for personal use
+- **Discord** — Best for community / team use
+- **Slack** — Best for workplace integration
+- **WhatsApp** — QR pairing, no developer setup needed
+- **Feishu / Lark** — For teams using Feishu (China) or Lark (Global)
+- **WeCom** — For enterprise WeChat users
+- **Web** — Always available after onboarding, no setup required
 
 ### The gateway won't start, what should I do?
 
